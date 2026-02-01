@@ -18,12 +18,13 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Configure multer for file uploads
-const upload = multer({ dest: 'uploads/' });
+// Configure multer for file uploads (use /tmp for Vercel)
+const uploadDir = process.env.NODE_ENV === 'production' ? '/tmp/uploads' : 'uploads';
+const upload = multer({ dest: uploadDir });
 
 // Ensure uploads directory exists
-if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
-  fs.mkdirSync(path.join(__dirname, 'uploads'));
+if (!fs.existsSync(uploadDir)) {
+  fs.mkdirSync(uploadDir, { recursive: true });
 }
 
 // Store email sending state
