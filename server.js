@@ -534,7 +534,13 @@ async function sendEmails(contacts, templates, delayMin, delayMax, senderName) {
   isSending = false;
 }
 
-const PORT = process.env.PORT || 3001;
-app.listen(PORT, () => {
-  console.log('server is running');
-});
+// For local development
+if (!isVercel) {
+  const PORT = process.env.PORT || 3001;
+  app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+  });
+}
+
+// Export for Vercel serverless
+export default app;
