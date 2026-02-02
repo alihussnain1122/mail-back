@@ -391,6 +391,14 @@ async function sendEmails(contacts, templates, delayMin, delayMax, senderName) {
   for (const contact of contacts) {
     if (stopRequested) {
       sendingProgress.logs.push({ time: new Date().toISOString(), message: 'Sending stopped by user' });
+      break;
+    }
+    
+    const email = contact.email || contact;
+    sendingProgress.current = email;
+    
+    try {
+      const template = templates[templateIndex];
       sendingProgress.currentTemplate = {
         index: templateIndex + 1,
         subject: template.subject,
@@ -423,17 +431,7 @@ async function sendEmails(contacts, templates, delayMin, delayMax, senderName) {
         
         sendingProgress.logs.push({
           time: new Date().toISOString(),
-          message: `Waiting ${sendingProgress.delaySeconds
-        message: `✓ Sent to ${email} (Template #${templateIndex === 0 ? templates.length : templateIndex})`,
-        success: true
-      });
-      
-      // Random delay between emails
-      if (contacts.indexOf(contact) < contacts.length - 1) {
-        const delay = Math.floor(Math.random() * (delayMax - delayMin) * 1000) + delayMin * 1000;
-        sendingProgress.logs.push({
-          time: new Date().toISOString(),
-          message: `Waiting ${Math.round(delay / 1000)} seconds...`,
+          message: `Waiting ${sendingProgress.delaySeconds} seconds...`,
           info: true
         });
         await new Promise(resolve => setTimeout(resolve, delay));
@@ -441,10 +439,7 @@ async function sendEmails(contacts, templates, delayMin, delayMax, senderName) {
       
     } catch (err) {
       sendingProgress.failed.push({ email, error: err.message });
-      sendingProgrcurrentTemplate = null;
-  sendingProgress.nextEmailTime = null;
-  sendingProgress.delaySeconds = 0;
-  sendingProgress.ess.logs.push({
+      sendingProgress.logs.push({
         time: new Date().toISOString(),
         message: `✗ Failed for ${email}: ${err.message}`,
         success: false
@@ -453,6 +448,9 @@ async function sendEmails(contacts, templates, delayMin, delayMax, senderName) {
   }
   
   sendingProgress.current = '';
+  sendingProgress.currentTemplate = null;
+  sendingProgress.nextEmailTime = null;
+  sendingProgress.delaySeconds = 0;
   sendingProgress.logs.push({
     time: new Date().toISOString(),
     message: `Completed! Sent: ${sendingProgress.sent}/${sendingProgress.total}, Failed: ${sendingProgress.failed.length}`,

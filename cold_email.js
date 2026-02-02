@@ -74,8 +74,8 @@ async function sendColdEmails(csvFile) {
 
           console.log(`Email sent to: ${email} | Template #${templateIndex === 0 ? templates.length : templateIndex}`);
 
-          // Human-like delay 10-90 seconds
-          const delay = Math.floor(Math.random() * 80000) + 10000;
+          // Human-like delay 10-110 seconds
+          const delay = Math.floor(Math.random() * 110000) + 10000;
           console.log(`Waiting for ${Math.round(delay / 1000)} seconds...`);
           await wait(delay);
 
