@@ -154,6 +154,15 @@ function createTransporter() {
 
 // API Routes
 
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    timestamp: new Date().toISOString(),
+    smtp: !!(process.env.SMTP_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS)
+  });
+});
+
 // Get SMTP configuration status
 app.get('/api/config', (req, res) => {
   const configured = isVercel 
@@ -440,20 +449,51 @@ app.post('/api/send/stop', (req, res) => {
 app.post('/api/send/single', async (req, res) => {
   const { email, template, senderName = 'Ali' } = req.body;
   
+  console.log('Received send request for:', email);
+  
+  if (!email || !template) {
+    console.error('Missing email or template');
+    return res.status(400).json({ success: false, error: 'Email and template are required' });
+  }
+  
   try {
-    const transporter = createTransporter();
-    const htmlBody = template.body.replace(/\n/g, '<br>').replace(/•/g, '•');
     const emailUser = isVercel ? inMemoryConfig.emailUser : process.env.EMAIL_USER;
+    const emailPass = isVercel ? inMemoryConfig.emailPass : process.env.EMAIL_PASS;
+    const smtpHost = isVercel ? inMemoryConfig.smtpHost : process.env.SMTP_HOST;
+    const smtpPort = isVercel ? inMemoryConfig.smtpPort : process.env.SMTP_PORT;
     
-    await transporter.sendMail({
+    console.log('SMTP Config:', { host: smtpHost, port: smtpPort, user: emailUser, hasPass: !!emailPass });
+    
+    if (!emailUser || !emailPass || !smtpHost) {
+      console.error('SMTP not configured');
+      return res.status(400).json({ success: false, error: 'SMTP not configured. Please set up in Settings.' });
+    }
+    
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: Number(smtpPort) || 587,
+      secure: false,
+      auth: { user: emailUser, pass: emailPass },
+    });
+    
+    console.log('Verifying SMTP connection...');
+    await transporter.verify();
+    console.log('SMTP verified, sending email...');
+    
+    const htmlBody = template.body.replace(/\n/g, '<br>').replace(/•/g, '•');
+    
+    const info = await transporter.sendMail({
       from: `"${senderName}" <${emailUser}>`,
       to: email,
       subject: template.subject,
       html: htmlBody,
     });
     
-    res.json({ success: true, message: `Email sent to ${email}` });
+    console.log('Email sent successfully:', info.messageId);
+    res.json({ success: true, message: `Email sent to ${email}`, messageId: info.messageId });
   } catch (err) {
+    console.error('Send error:', err.message);
+    console.error('Full error:', err);
     res.status(500).json({ success: false, error: err.message });
   }
 });
@@ -470,9 +510,26 @@ app.post('/api/send/test', async (req, res) => {
       return res.status(400).json({ error: 'Template not found' });
     }
     
-    const transporter = createTransporter();
-    const htmlBody = template.body.replace(/\n/g, '<br>').replace(/•/g, '•');
     const emailUser = isVercel ? inMemoryConfig.emailUser : process.env.EMAIL_USER;
+    const emailPass = isVercel ? inMemoryConfig.emailPass : process.env.EMAIL_PASS;
+    const smtpHost = isVercel ? inMemoryConfig.smtpHost : process.env.SMTP_HOST;
+    const smtpPort = isVercel ? inMemoryConfig.smtpPort : process.env.SMTP_PORT;
+    
+    if (!emailUser || !emailPass || !smtpHost) {
+      return res.status(400).json({ error: 'SMTP not configured. Please set up in Settings.' });
+    }
+    
+    const transporter = nodemailer.createTransport({
+      host: smtpHost,
+      port: Number(smtpPort) || 587,
+      secure: false,
+      auth: { user: emailUser, pass: emailPass },
+      connectionTimeout: 10000,
+      greetingTimeout: 10000,
+      socketTimeout: 15000,
+    });
+    
+    const htmlBody = template.body.replace(/\n/g, '<br>').replace(/•/g, '•');
     
     await transporter.sendMail({
       from: `"Ali" <${emailUser}>`,
@@ -483,6 +540,7 @@ app.post('/api/send/test', async (req, res) => {
     
     res.json({ success: true, message: `Test email sent to ${email}` });
   } catch (err) {
+    console.error('Test email error:', err.message);
     res.status(500).json({ error: err.message });
   }
 });
