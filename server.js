@@ -421,11 +421,31 @@ app.post('/api/send/start', async (req, res) => {
 
 // Stop sending emails
 app.post('/api/send/stop', (req, res) => {
-  if (!isSending) {
-    return res.status(400).json({ error: 'Not currently sending' });
-  }
   stopRequested = true;
+  isSending = false;
   res.json({ success: true, message: 'Stop requested' });
+});
+
+// Send a single email (for Vercel serverless - frontend controls the loop)
+app.post('/api/send/single', async (req, res) => {
+  const { email, template, senderName = 'Ali' } = req.body;
+  
+  try {
+    const transporter = createTransporter();
+    const htmlBody = template.body.replace(/\n/g, '<br>').replace(/•/g, '•');
+    const emailUser = isVercel ? inMemoryConfig.emailUser : process.env.EMAIL_USER;
+    
+    await transporter.sendMail({
+      from: `"${senderName}" <${emailUser}>`,
+      to: email,
+      subject: template.subject,
+      html: htmlBody,
+    });
+    
+    res.json({ success: true, message: `Email sent to ${email}` });
+  } catch (err) {
+    res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 // Send test email
