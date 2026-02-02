@@ -8,6 +8,7 @@ import { createObjectCsvWriter } from 'csv-writer';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import multer from 'multer';
+import { Readable } from 'stream';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -18,14 +19,30 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Configure multer for file uploads (use /tmp for Vercel)
-const uploadDir = process.env.NODE_ENV === 'production' ? '/tmp/uploads' : 'uploads';
-const upload = multer({ dest: uploadDir });
+// Check if running on Vercel (production)
+const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
 
-// Ensure uploads directory exists
-if (!fs.existsSync(uploadDir)) {
-  fs.mkdirSync(uploadDir, { recursive: true });
+// Configure multer for file uploads
+// Use memory storage for Vercel, disk storage for local
+const storage = isVercel 
+  ? multer.memoryStorage()
+  : multer.diskStorage({ destination: 'uploads/' });
+const upload = multer({ storage });
+
+// Ensure uploads directory exists (local only)
+if (!isVercel && !fs.existsSync('uploads')) {
+  fs.mkdirSync('uploads', { recursive: true });
 }
+
+// In-memory storage for Vercel deployment
+let inMemoryTemplates = [];
+let inMemoryContacts = [];
+let inMemoryConfig = {
+  smtpHost: process.env.SMTP_HOST || '',
+  smtpPort: process.env.SMTP_PORT || '587',
+  emailUser: process.env.EMAIL_USER || '',
+  emailPass: process.env.EMAIL_PASS || '',
+};
 
 // Store email sending state
 let isSending = false;
@@ -42,8 +59,11 @@ let sendingProgress = {
 };
 let stopRequested = false;
 
-// Load templates
+// Load templates (memory for Vercel, file for local)
 function loadTemplates() {
+  if (isVercel) {
+    return inMemoryTemplates;
+  }
   try {
     return JSON.parse(fs.readFileSync(path.join(__dirname, 'email_templates.json'), 'utf-8'));
   } catch {
@@ -51,8 +71,11 @@ function loadTemplates() {
   }
 }
 
-// Load contacts from CSV
+// Load contacts (memory for Vercel, file for local)
 function loadContacts() {
+  if (isVercel) {
+    return Promise.resolve(inMemoryContacts);
+  }
   return new Promise((resolve, reject) => {
     const contacts = [];
     const csvPath = path.join(__dirname, 'contacts.csv');
@@ -74,8 +97,12 @@ function loadContacts() {
   });
 }
 
-// Save contacts to CSV
+// Save contacts (memory for Vercel, file for local)
 async function saveContacts(contacts) {
+  if (isVercel) {
+    inMemoryContacts = contacts;
+    return;
+  }
   const csvWriter = createObjectCsvWriter({
     path: path.join(__dirname, 'contacts.csv'),
     header: [{ id: 'email', title: 'Email' }]
@@ -83,8 +110,12 @@ async function saveContacts(contacts) {
   await csvWriter.writeRecords(contacts);
 }
 
-// Save templates
+// Save templates (memory for Vercel, file for local)
 function saveTemplates(templates) {
+  if (isVercel) {
+    inMemoryTemplates = templates;
+    return;
+  }
   fs.writeFileSync(
     path.join(__dirname, 'email_templates.json'),
     JSON.stringify(templates, null, 2)
@@ -93,13 +124,20 @@ function saveTemplates(templates) {
 
 // Create transporter
 function createTransporter() {
+  const config = isVercel ? inMemoryConfig : {
+    smtpHost: process.env.SMTP_HOST,
+    smtpPort: process.env.SMTP_PORT,
+    emailUser: process.env.EMAIL_USER,
+    emailPass: process.env.EMAIL_PASS,
+  };
+  
   return nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT),
+    host: config.smtpHost,
+    port: Number(config.smtpPort),
     secure: false,
     auth: {
-      user: process.env.EMAIL_USER,
-      pass: process.env.EMAIL_PASS,
+      user: config.emailUser,
+      pass: config.emailPass,
     },
   });
 }
@@ -108,11 +146,15 @@ function createTransporter() {
 
 // Get SMTP configuration status
 app.get('/api/config', (req, res) => {
+  const configured = isVercel 
+    ? !!(inMemoryConfig.smtpHost && inMemoryConfig.emailUser && inMemoryConfig.emailPass)
+    : !!(process.env.SMTP_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS);
+  
   res.json({
-    configured: !!(process.env.SMTP_HOST && process.env.EMAIL_USER && process.env.EMAIL_PASS),
-    smtpHost: process.env.SMTP_HOST || '',
-    smtpPort: process.env.SMTP_PORT || '587',
-    emailUser: process.env.EMAIL_USER || '',
+    configured,
+    smtpHost: isVercel ? inMemoryConfig.smtpHost : (process.env.SMTP_HOST || ''),
+    smtpPort: isVercel ? inMemoryConfig.smtpPort : (process.env.SMTP_PORT || '587'),
+    emailUser: isVercel ? inMemoryConfig.emailUser : (process.env.EMAIL_USER || ''),
   });
 });
 
@@ -120,16 +162,21 @@ app.get('/api/config', (req, res) => {
 app.post('/api/config', (req, res) => {
   const { smtpHost, smtpPort, emailUser, emailPass } = req.body;
   
-  const envContent = `SMTP_HOST=${smtpHost}
+  if (isVercel) {
+    // Store in memory for Vercel
+    inMemoryConfig = { smtpHost, smtpPort, emailUser, emailPass };
+    res.json({ success: true });
+  } else {
+    // Write to .env file for local
+    const envContent = `SMTP_HOST=${smtpHost}
 SMTP_PORT=${smtpPort}
 EMAIL_USER=${emailUser}
 EMAIL_PASS=${emailPass}
 `;
-  
-  fs.writeFileSync(path.join(__dirname, '.env'), envContent);
-  dotenv.config({ override: true });
-  
-  res.json({ success: true });
+    fs.writeFileSync(path.join(__dirname, '.env'), envContent);
+    dotenv.config({ override: true });
+    res.json({ success: true });
+  }
 });
 
 // Get all templates
@@ -229,28 +276,43 @@ app.post('/api/upload/contacts', upload.single('file'), async (req, res) => {
     }
 
     const contacts = [];
-    const filePath = req.file.path;
-
-    fs.createReadStream(filePath)
-      .pipe(csv({ headers: ['Email'], skipLines: 1 }))
-      .on('data', row => {
-        if (row.Email?.trim()) {
-          contacts.push({ email: row.Email.trim() });
+    
+    if (isVercel) {
+      // Parse from memory buffer for Vercel
+      const fileContent = req.file.buffer.toString('utf-8');
+      const lines = fileContent.split(/\r?\n/);
+      
+      // Skip header line, parse rest
+      for (let i = 1; i < lines.length; i++) {
+        const email = lines[i].trim();
+        if (email && email.includes('@')) {
+          contacts.push({ email });
         }
-      })
-      .on('end', async () => {
-        // Save to contacts.csv
-        await saveContacts(contacts);
-        
-        // Clean up uploaded file
-        fs.unlinkSync(filePath);
-        
-        res.json({ success: true, contacts, count: contacts.length });
-      })
-      .on('error', (err) => {
-        fs.unlinkSync(filePath);
-        res.status(500).json({ error: 'Failed to parse CSV file' });
-      });
+      }
+      
+      await saveContacts(contacts);
+      res.json({ success: true, contacts, count: contacts.length });
+    } else {
+      // Parse from file for local
+      const filePath = req.file.path;
+      
+      fs.createReadStream(filePath)
+        .pipe(csv({ headers: ['Email'], skipLines: 1 }))
+        .on('data', row => {
+          if (row.Email?.trim()) {
+            contacts.push({ email: row.Email.trim() });
+          }
+        })
+        .on('end', async () => {
+          await saveContacts(contacts);
+          fs.unlinkSync(filePath);
+          res.json({ success: true, contacts, count: contacts.length });
+        })
+        .on('error', (err) => {
+          fs.unlinkSync(filePath);
+          res.status(500).json({ error: 'Failed to parse CSV file' });
+        });
+    }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -263,8 +325,15 @@ app.post('/api/upload/templates', upload.single('file'), async (req, res) => {
       return res.status(400).json({ error: 'No file uploaded' });
     }
 
-    const filePath = req.file.path;
-    const fileContent = fs.readFileSync(filePath, 'utf-8');
+    let fileContent;
+    
+    if (isVercel) {
+      // Read from memory buffer for Vercel
+      fileContent = req.file.buffer.toString('utf-8');
+    } else {
+      // Read from file for local
+      fileContent = fs.readFileSync(req.file.path, 'utf-8');
+    }
     
     try {
       const templates = JSON.parse(fileContent);
@@ -280,15 +349,19 @@ app.post('/api/upload/templates', upload.single('file'), async (req, res) => {
         }
       }
       
-      // Save to email_templates.json
+      // Save templates
       saveTemplates(templates);
       
-      // Clean up uploaded file
-      fs.unlinkSync(filePath);
+      // Clean up uploaded file (local only)
+      if (!isVercel && req.file.path) {
+        fs.unlinkSync(req.file.path);
+      }
       
       res.json({ success: true, templates, count: templates.length });
     } catch (parseErr) {
-      fs.unlinkSync(filePath);
+      if (!isVercel && req.file.path) {
+        fs.unlinkSync(req.file.path);
+      }
       res.status(400).json({ error: 'Invalid JSON format: ' + parseErr.message });
     }
   } catch (err) {
@@ -369,9 +442,10 @@ app.post('/api/send/test', async (req, res) => {
     
     const transporter = createTransporter();
     const htmlBody = template.body.replace(/\n/g, '<br>').replace(/•/g, '•');
+    const emailUser = isVercel ? inMemoryConfig.emailUser : process.env.EMAIL_USER;
     
     await transporter.sendMail({
-      from: `"Ali" <${process.env.EMAIL_USER}>`,
+      from: `"Ali" <${emailUser}>`,
       to: email,
       subject: template.subject,
       html: htmlBody,
@@ -386,6 +460,7 @@ app.post('/api/send/test', async (req, res) => {
 // Background email sending function
 async function sendEmails(contacts, templates, delayMin, delayMax, senderName) {
   const transporter = createTransporter();
+  const emailUser = isVercel ? inMemoryConfig.emailUser : process.env.EMAIL_USER;
   let templateIndex = 0;
   
   for (const contact of contacts) {
@@ -410,7 +485,7 @@ async function sendEmails(contacts, templates, delayMin, delayMax, senderName) {
       const htmlBody = template.body.replace(/\n/g, '<br>').replace(/•/g, '•');
       
       await transporter.sendMail({
-        from: `"${senderName}" <${process.env.EMAIL_USER}>`,
+        from: `"${senderName}" <${emailUser}>`,
         to: email,
         subject: template.subject,
         html: htmlBody,
@@ -461,5 +536,5 @@ async function sendEmails(contacts, templates, delayMin, delayMax, senderName) {
 
 const PORT = process.env.PORT || 3001;
 app.listen(PORT, () => {
-  console.log(`Email API server running on http://localhost:${PORT}`);
+  console.log('server is running');
 });
