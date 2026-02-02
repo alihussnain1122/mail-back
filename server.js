@@ -19,11 +19,11 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// Check if running on Vercel (production)
-const isVercel = process.env.VERCEL === '1' || process.env.NODE_ENV === 'production';
+// Check if running on Vercel serverless (only check VERCEL env var)
+const isVercel = process.env.VERCEL === '1';
 
 // Configure multer for file uploads
-// Use memory storage for Vercel, disk storage for local
+// Use memory storage for serverless (Vercel), disk storage for traditional servers
 const storage = isVercel 
   ? multer.memoryStorage()
   : multer.diskStorage({ destination: 'uploads/' });
@@ -554,13 +554,11 @@ async function sendEmails(contacts, templates, delayMin, delayMax, senderName) {
   isSending = false;
 }
 
-// For local development
-if (!isVercel) {
-  const PORT = process.env.PORT || 3001;
-  app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-  });
-}
+// Start server (for Render, Railway, local, etc.)
+const PORT = process.env.PORT || 3001;
+app.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
+});
 
 // Export for Vercel serverless
 export default app;
