@@ -43,12 +43,10 @@ router.get('/open/:trackingId', async (req, res) => {
         console.log('Tracking saved successfully');
       }
       
+      // Update campaign_emails opened_at (if exists)
       await supabase
         .from('campaign_emails')
-        .update({ 
-          opened_at: new Date().toISOString(),
-          open_count: supabase.raw('COALESCE(open_count, 0) + 1')
-        })
+        .update({ opened_at: new Date().toISOString() })
         .eq('tracking_id', trackingId)
         .is('opened_at', null);
     }
