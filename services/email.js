@@ -45,16 +45,6 @@ export const injectTracking = (htmlBody, trackingId, enableTracking = true) => {
     trackedHtml += trackingPixel;
   }
   
-  // Add unsubscribe link if not present
-  if (!trackedHtml.includes('unsubscribe')) {
-    const unsubscribeLink = `<p style="font-size:11px;color:#999;margin-top:30px;text-align:center;"><a href="${BACKEND_URL}/api/unsubscribe/${trackingId}" style="color:#999;">Unsubscribe</a></p>`;
-    if (trackedHtml.includes('</body>')) {
-      trackedHtml = trackedHtml.replace('</body>', `${unsubscribeLink}</body>`);
-    } else {
-      trackedHtml += unsubscribeLink;
-    }
-  }
-  
   return trackedHtml;
 };
 
