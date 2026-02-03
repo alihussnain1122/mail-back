@@ -672,25 +672,33 @@ process.on('unhandledRejection', (reason, promise) => {
 // START SERVER WITH GRACEFUL SHUTDOWN
 // ===================
 const PORT = CONFIG.port;
-const server = app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-  console.log(`CORS enabled for: ${allowedOrigins.join(', ')}`);
-});
 
-// Graceful shutdown handler
-function shutdown(signal) {
-  console.log(`\n${signal} received. Shutting down gracefully...`);
-  server.close(() => {
-    console.log('Server closed.');
-    process.exit(0);
+// For Vercel serverless deployment
+if (process.env.VERCEL) {
+  // Export the app for Vercel serverless
+  export default app;
+} else {
+  // Traditional server for local development
+  const server = app.listen(PORT, () => {
+    console.log(`Server running on http://localhost:${PORT}`);
+    console.log(`CORS enabled for: ${allowedOrigins.join(', ')}`);
   });
-  
-  // Force close after 10 seconds
-  setTimeout(() => {
-    console.error('Forcing shutdown after timeout.');
-    process.exit(1);
-  }, 10000);
-}
 
-process.on('SIGTERM', () => shutdown('SIGTERM'));
-process.on('SIGINT', () => shutdown('SIGINT'));
+  // Graceful shutdown handler
+  function shutdown(signal) {
+    console.log(`\n${signal} received. Shutting down gracefully...`);
+    server.close(() => {
+      console.log('Server closed.');
+      process.exit(0);
+    });
+    
+    // Force close after 10 seconds
+    setTimeout(() => {
+      console.error('Forcing shutdown after timeout.');
+      process.exit(1);
+    }, 10000);
+  }
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+}
