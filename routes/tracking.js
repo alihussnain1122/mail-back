@@ -96,7 +96,12 @@ router.get('/click/:trackingId', async (req, res) => {
         device_type: deviceType,
       });
       
-      await supabase.rpc('increment_click_count', { tracking_id_param: trackingId });
+      // Track click count in campaign_emails
+      await supabase
+        .from('campaign_emails')
+        .update({ clicked_at: new Date().toISOString() })
+        .eq('tracking_id', trackingId)
+        .is('clicked_at', null);
     }
     
   } catch (err) {
