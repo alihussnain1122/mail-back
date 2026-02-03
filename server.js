@@ -673,12 +673,8 @@ process.on('unhandledRejection', (reason, promise) => {
 // ===================
 const PORT = CONFIG.port;
 
-// For Vercel serverless deployment
-if (process.env.VERCEL) {
-  // Export the app for Vercel serverless
-  export default app;
-} else {
-  // Traditional server for local development
+// Only start the server if not running in Vercel serverless environment
+if (!process.env.VERCEL) {
   const server = app.listen(PORT, () => {
     console.log(`Server running on http://localhost:${PORT}`);
     console.log(`CORS enabled for: ${allowedOrigins.join(', ')}`);
@@ -702,3 +698,6 @@ if (process.env.VERCEL) {
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
 }
+
+// Export for Vercel serverless (must be at top level)
+export default app;
