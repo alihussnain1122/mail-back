@@ -40,6 +40,8 @@ const allowedOrigins = [
   CONFIG.frontendUrl,
   'http://localhost:5173',
   'http://localhost:3000',
+  'http://localhost:5174',
+  'https://cold-mailing-ebon.vercel.app', // Hardcoded production frontend
 ];
 
 app.use(cors({
@@ -51,6 +53,8 @@ app.use(cors({
     if (allowedOrigins.includes(origin)) {
       return callback(null, true);
     }
+    // Log rejected origins for debugging
+    console.log('CORS rejected origin:', origin);
     callback(new Error('Not allowed by CORS'));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
