@@ -23,10 +23,15 @@ app.set('trust proxy', 1);
 // MIDDLEWARE
 // ===================
 
-// CORS
+// Tracking routes - NO CORS restriction (called by email clients)
+app.use('/api/track', trackingRouter);
+app.use('/api/unsubscribe', unsubscribeRouter);
+
+// CORS for other routes
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin && process.env.NODE_ENV !== 'production') {
+    // Allow requests with no origin (email clients, mobile apps, etc.)
+    if (!origin) {
       return callback(null, true);
     }
     if (ALLOWED_ORIGINS.includes(origin)) {
@@ -52,8 +57,7 @@ app.use('/api/templates', templatesRouter);
 app.use('/api/contacts', contactsRouter);
 app.use('/api/upload', uploadsRouter);
 app.use('/api/send', emailRouter);
-app.use('/api/track', trackingRouter);
-app.use('/api/unsubscribe', unsubscribeRouter);
+// Note: tracking and unsubscribe routes are mounted before CORS middleware
 
 // ===================
 // ERROR HANDLING
