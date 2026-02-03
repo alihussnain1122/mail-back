@@ -1,0 +1,27 @@
+# Environment variables
+.env
+
+# Dependencies
+node_modules/
+
+# Uploads
+uploads/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Test files
+test.js
+test.py
+
+# IDE
+.vscode/
+.idea/
+
+# Vercel (not using serverless)
+.vercel/
