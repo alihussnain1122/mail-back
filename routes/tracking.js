@@ -23,6 +23,7 @@ router.get('/open/:trackingId', async (req, res) => {
     const trackingInfo = decodeTrackingId(trackingId);
     
     console.log('Email opened:', { trackingId, ...trackingInfo, deviceType });
+    console.log('Supabase client:', supabase ? 'initialized' : 'NULL');
     
     if (supabase && trackingInfo) {
       const { data, error } = await supabase.from('email_tracking').insert({
