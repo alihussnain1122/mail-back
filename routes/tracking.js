@@ -25,7 +25,7 @@ router.get('/open/:trackingId', async (req, res) => {
     console.log('Email opened:', { trackingId, ...trackingInfo, deviceType });
     
     if (supabase && trackingInfo) {
-      await supabase.from('email_tracking').insert({
+      const { data, error } = await supabase.from('email_tracking').insert({
         tracking_id: trackingId,
         campaign_id: trackingInfo.campaignId,
         email: trackingInfo.email,
@@ -35,6 +35,12 @@ router.get('/open/:trackingId', async (req, res) => {
         user_agent: userAgent.slice(0, 500),
         device_type: deviceType,
       });
+      
+      if (error) {
+        console.error('Supabase insert error:', error);
+      } else {
+        console.log('Tracking saved successfully');
+      }
       
       await supabase
         .from('campaign_emails')
