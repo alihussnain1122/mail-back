@@ -79,33 +79,40 @@ app.use(generalLimiter);
 app.use(express.json({ limit: '10mb' }));
 
 // Configure multer for file uploads
+// Note: File uploads don't work on Vercel (read-only filesystem)
+const isVercel = !!process.env.VERCEL;
 const uploadsDir = path.join(__dirname, 'uploads');
-const storage = multer.diskStorage({ 
-  destination: uploadsDir,
-  filename: (req, file, cb) => {
-    // Generate safe filename with timestamp
-    const ext = path.extname(file.originalname).toLowerCase();
-    const safeName = `upload_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`;
-    cb(null, safeName);
-  }
-});
-const upload = multer({ 
-  storage,
-  limits: { fileSize: CONFIG.maxFileSize },
-  fileFilter: (req, file, cb) => {
-    // Check by extension (more reliable than MIME type)
-    const ext = path.extname(file.originalname).toLowerCase();
-    if (ext === '.csv' || ext === '.json') {
-      cb(null, true);
-    } else {
-      cb(new Error('Invalid file type. Only CSV and JSON files are allowed.'));
-    }
-  }
-});
 
-// Ensure uploads directory exists (use absolute path)
-if (!fs.existsSync(uploadsDir)) {
-  fs.mkdirSync(uploadsDir, { recursive: true });
+let upload;
+if (!isVercel) {
+  const storage = multer.diskStorage({ 
+    destination: uploadsDir,
+    filename: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      const safeName = `upload_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`;
+      cb(null, safeName);
+    }
+  });
+  upload = multer({ 
+    storage,
+    limits: { fileSize: CONFIG.maxFileSize },
+    fileFilter: (req, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      if (ext === '.csv' || ext === '.json') {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid file type. Only CSV and JSON files are allowed.'));
+      }
+    }
+  });
+
+  // Ensure uploads directory exists (only in non-Vercel environment)
+  if (!fs.existsSync(uploadsDir)) {
+    fs.mkdirSync(uploadsDir, { recursive: true });
+  }
+} else {
+  // Dummy multer for Vercel - file uploads not supported
+  upload = multer({ storage: multer.memoryStorage() });
 }
 
 // ===================
@@ -175,12 +182,20 @@ const sanitizeHtml = (html) => {
 // ===================
 // DATA FUNCTIONS
 // ===================
+
+// In-memory storage for Vercel (serverless has no persistent filesystem)
+let inMemoryTemplates = [];
+let inMemoryContacts = [];
+
 function loadTemplates() {
+  // On Vercel, return in-memory data (no file access)
+  if (isVercel) {
+    return inMemoryTemplates;
+  }
   try {
     const data = fs.readFileSync(path.join(__dirname, 'email_templates.json'), 'utf-8');
     return JSON.parse(data);
   } catch (err) {
-    // Log actual errors but return empty for missing files
     if (err.code !== 'ENOENT') {
       console.error('Error loading templates:', err.message);
     }
@@ -190,6 +205,12 @@ function loadTemplates() {
 
 function loadContacts() {
   return new Promise((resolve, reject) => {
+    // On Vercel, return in-memory data
+    if (isVercel) {
+      resolve(inMemoryContacts);
+      return;
+    }
+    
     const contacts = [];
     const csvPath = path.join(__dirname, 'contacts.csv');
     
@@ -220,6 +241,11 @@ function loadContacts() {
 }
 
 async function saveContacts(contacts) {
+  // On Vercel, store in memory only
+  if (isVercel) {
+    inMemoryContacts = contacts;
+    return;
+  }
   const csvWriter = createObjectCsvWriter({
     path: path.join(__dirname, 'contacts.csv'),
     header: [{ id: 'email', title: 'Email' }]
@@ -228,6 +254,11 @@ async function saveContacts(contacts) {
 }
 
 function saveTemplates(templates) {
+  // On Vercel, store in memory only
+  if (isVercel) {
+    inMemoryTemplates = templates;
+    return;
+  }
   try {
     fs.writeFileSync(
       path.join(__dirname, 'email_templates.json'),
