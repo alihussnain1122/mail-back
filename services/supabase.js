@@ -1,11 +1,16 @@
 // Supabase client setup
 import { createClient } from '@supabase/supabase-js';
-import dotenv from 'dotenv';
-dotenv.config();
+import { SUPABASE_URL, SUPABASE_SERVICE_KEY } from '../config/index.js';
 
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+let supabase = null;
 
-export const supabase = createClient(supabaseUrl, supabaseKey, {
-  auth: { persistSession: false },
-});
+if (SUPABASE_SERVICE_KEY) {
+  supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY, {
+    auth: { persistSession: false },
+  });
+  console.log('✅ Supabase client initialized for tracking');
+} else {
+  console.warn('⚠️ SUPABASE_SERVICE_KEY not set - tracking events will only be logged');
+}
+
+export { supabase };
