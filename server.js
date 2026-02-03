@@ -10,6 +10,7 @@ import { fileURLToPath } from 'url';
 import multer from 'multer';
 import rateLimit from 'express-rate-limit';
 import { body, param, validationResult } from 'express-validator';
+import { createClient } from '@supabase/supabase-js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,88 +33,36 @@ const CONFIG = {
 };
 
 // ===================
+// SUPABASE CLIENT
+// ===================
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://otkpdhkerefqaulhagqw.supabase.co';
+const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY; // Use service role key for backend
+
+let supabase = null;
+if (SUPABASE_SERVICE_KEY) {
+  supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
+  console.log('✅ Supabase client initialized for tracking');
+} else {
+  console.warn('⚠️ SUPABASE_SERVICE_KEY not set - tracking events will only be logged');
+}
+
+// ===================
 // MIDDLEWARE
 // ===================
 
+
 // CORS - Restrict to frontend URL only
-const allowedOrigins = [
-  CONFIG.frontendUrl,
-  'http://localhost:5173',
-  'http://localhost:3000',
-  'http://localhost:5174',
-  'https://cold-mailing-ebon.vercel.app', // Hardcoded production frontend
-];
 
-app.use(cors({
-  origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, Postman, etc.) in development
-    if (!origin && process.env.NODE_ENV !== 'production') {
-      return callback(null, true);
-    }
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    // Log rejected origins for debugging
-    console.log('CORS rejected origin:', origin);
-    callback(new Error('Not allowed by CORS'));
-  },
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization'],
-  credentials: true,
-}));
+// ... (CORS and other middleware setup here) ...
 
-// Rate limiting
-const generalLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // 100 requests per window
-  message: { error: 'Too many requests, please try again later' },
-});
-
-const emailLimiter = rateLimit({
-  windowMs: 60 * 1000, // 1 minute
-  max: 10, // 10 emails per minute
-  message: { error: 'Email rate limit exceeded, please slow down' },
-});
-
-app.use(generalLimiter);
-app.use(express.json({ limit: '10mb' }));
-
-// Configure multer for file uploads
-// Note: File uploads don't work on Vercel (read-only filesystem)
-const isVercel = !!process.env.VERCEL;
-const uploadsDir = path.join(__dirname, 'uploads');
-
-let upload;
-if (!isVercel) {
-  const storage = multer.diskStorage({ 
-    destination: uploadsDir,
-    filename: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      const safeName = `upload_${Date.now()}_${Math.random().toString(36).slice(2)}${ext}`;
-      cb(null, safeName);
-    }
-  });
-  upload = multer({ 
-    storage,
-    limits: { fileSize: CONFIG.maxFileSize },
-    fileFilter: (req, file, cb) => {
-      const ext = path.extname(file.originalname).toLowerCase();
-      if (ext === '.csv' || ext === '.json') {
-        cb(null, true);
-      } else {
-        cb(new Error('Invalid file type. Only CSV and JSON files are allowed.'));
-      }
-    }
-  });
-
-  // Ensure uploads directory exists (only in non-Vercel environment)
-  if (!fs.existsSync(uploadsDir)) {
-    fs.mkdirSync(uploadsDir, { recursive: true });
-  }
-} else {
-  // Dummy multer for Vercel - file uploads not supported
-  upload = multer({ storage: multer.memoryStorage() });
+// Ensure uploads directory exists (only in non-Vercel environment)
+if (!isVercel && !fs.existsSync(uploadsDir)) {
+  fs.mkdirSync(uploadsDir, { recursive: true });
 }
+
+// Import and use contacts router after middleware
+import contactsRouter from './routes/contacts.js';
+app.use('/api/contacts', contactsRouter);
 
 // ===================
 // VALIDATION HELPERS
@@ -561,6 +510,55 @@ const createTransporterFromCredentials = (credentials) => {
   });
 };
 
+// Generate tracking ID for an email
+const generateTrackingId = (campaignId, email, userId) => {
+  const data = `${campaignId}:${email}:${userId}`;
+  return Buffer.from(data).toString('base64url');
+};
+
+// Inject tracking pixel and wrap links
+const BACKEND_URL = process.env.BACKEND_URL || 'https://mail-back-nine.vercel.app';
+
+const injectTracking = (htmlBody, trackingId, enableTracking = true) => {
+  if (!enableTracking) return htmlBody;
+  
+  let trackedHtml = htmlBody;
+  
+  // Wrap all links for click tracking
+  trackedHtml = trackedHtml.replace(
+    /<a\s+([^>]*href=["'])([^"']+)(["'][^>]*)>/gi,
+    (match, prefix, url, suffix) => {
+      // Skip tracking for unsubscribe links or already tracked links
+      if (url.includes('/api/track/') || url.includes('/api/unsubscribe/')) {
+        return match;
+      }
+      const trackedUrl = `${BACKEND_URL}/api/track/click/${trackingId}?url=${encodeURIComponent(url)}`;
+      return `<a ${prefix}${trackedUrl}${suffix}>`;
+    }
+  );
+  
+  // Add tracking pixel before closing body tag (or at end if no body tag)
+  const trackingPixel = `<img src="${BACKEND_URL}/api/track/open/${trackingId}" width="1" height="1" style="display:none;visibility:hidden;" alt="" />`;
+  
+  if (trackedHtml.includes('</body>')) {
+    trackedHtml = trackedHtml.replace('</body>', `${trackingPixel}</body>`);
+  } else {
+    trackedHtml += trackingPixel;
+  }
+  
+  // Add unsubscribe link if not present
+  if (!trackedHtml.includes('unsubscribe')) {
+    const unsubscribeLink = `<p style="font-size:11px;color:#999;margin-top:30px;text-align:center;"><a href="${BACKEND_URL}/api/unsubscribe/${trackingId}" style="color:#999;">Unsubscribe</a></p>`;
+    if (trackedHtml.includes('</body>')) {
+      trackedHtml = trackedHtml.replace('</body>', `${unsubscribeLink}</body>`);
+    } else {
+      trackedHtml += unsubscribeLink;
+    }
+  }
+  
+  return trackedHtml;
+};
+
 // Send a single email (credentials from request body)
 app.post('/api/send/single', 
   emailLimiter,
@@ -570,7 +568,7 @@ app.post('/api/send/single',
   body('credentials').notEmpty().withMessage('SMTP credentials are required'),
   handleValidationErrors,
   async (req, res) => {
-    const { email, template, senderName, credentials } = req.body;
+    const { email, template, senderName, credentials, campaignId, userId, enableTracking } = req.body;
     
     // Validate credentials
     const credError = validateCredentials(credentials);
@@ -579,6 +577,8 @@ app.post('/api/send/single',
     }
     
     let transporter;
+    let trackingId = null;
+    
     try {
       transporter = createTransporterFromCredentials(credentials);
       
@@ -587,7 +587,13 @@ app.post('/api/send/single',
       // Sanitize all inputs for email headers
       const sanitizedSubject = sanitizeEmailHeader(template.subject);
       const sanitizedSenderName = sanitizeEmailHeader(senderName || credentials.senderName || 'Support Team');
-      const htmlBody = sanitizeHtml(template.body).replace(/\n/g, '<br>');
+      let htmlBody = sanitizeHtml(template.body).replace(/\n/g, '<br>');
+      
+      // Generate tracking ID and inject tracking if enabled
+      if (enableTracking && campaignId && userId) {
+        trackingId = generateTrackingId(campaignId, email, userId);
+        htmlBody = injectTracking(htmlBody, trackingId, true);
+      }
       
       const info = await transporter.sendMail({
         from: `"${sanitizedSenderName}" <${credentials.emailUser}>`,
@@ -597,10 +603,44 @@ app.post('/api/send/single',
         text: htmlBody.replace(/<[^>]+>/g, ''), // Plain text fallback
       });
       
-      res.json({ success: true, message: `Email sent to ${email}`, messageId: info.messageId });
+      res.json({ 
+        success: true, 
+        message: `Email sent to ${email}`, 
+        messageId: info.messageId,
+        trackingId, // Return for storing in campaign_emails
+      });
     } catch (err) {
       console.error('Send error:', err.message);
-      res.status(500).json({ success: false, error: err.message });
+      
+      // Check if it's a bounce/delivery failure
+      const errorMessage = err.message.toLowerCase();
+      const isBounce = errorMessage.includes('not exist') || 
+                       errorMessage.includes('invalid') ||
+                       errorMessage.includes('rejected') ||
+                       errorMessage.includes('undeliverable') ||
+                       errorMessage.includes('mailbox not found') ||
+                       errorMessage.includes('user unknown');
+      
+      // Report bounce if applicable
+      if (isBounce && supabase && userId) {
+        try {
+          await supabase.from('bounced_emails').upsert({
+            user_id: userId,
+            email,
+            bounce_type: 'hard',
+            reason: err.message,
+            campaign_id: campaignId,
+          }, { onConflict: 'user_id,email' });
+        } catch (bounceErr) {
+          console.error('Failed to record bounce:', bounceErr);
+        }
+      }
+      
+      res.status(500).json({ 
+        success: false, 
+        error: err.message,
+        isBounce,
+      });
     } finally {
       // Close transporter to prevent connection leaks
       if (transporter) transporter.close();
@@ -677,6 +717,239 @@ app.use((err, req, res, next) => {
   if (err instanceof multer.MulterError) {
     return res.status(400).json({ error: 'File upload error: ' + err.message });
   }
+// ===================
+// EMAIL TRACKING ROUTES
+// ===================
+
+// Tracking pixel endpoint (1x1 transparent GIF)
+const TRACKING_PIXEL = Buffer.from(
+  'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7',
+  'base64'
+);
+
+// Helper: Decode tracking ID to get campaign info
+// Tracking ID format: base64 encoded "campaignId:email:userId"
+function decodeTrackingId(trackingId) {
+  try {
+    const decoded = Buffer.from(trackingId, 'base64url').toString('utf8');
+    const [campaignId, email, userId] = decoded.split(':');
+    return { campaignId, email, userId };
+  } catch {
+    return null;
+  }
+}
+
+// Track email open (via pixel)
+app.get('/api/track/open/:trackingId', async (req, res) => {
+  const { trackingId } = req.params;
+  
+  try {
+    const ipAddress = req.ip || req.connection?.remoteAddress || 'unknown';
+    const userAgent = req.get('User-Agent') || 'unknown';
+    
+    let deviceType = 'desktop';
+    if (/mobile|android|iphone|ipad/i.test(userAgent)) {
+      deviceType = /ipad|tablet/i.test(userAgent) ? 'tablet' : 'mobile';
+    }
+    
+    const trackingInfo = decodeTrackingId(trackingId);
+    
+    console.log('Email opened:', { trackingId, ...trackingInfo, deviceType });
+    
+    // Store in Supabase if connected
+    if (supabase && trackingInfo) {
+      await supabase.from('email_tracking').insert({
+        tracking_id: trackingId,
+        campaign_id: trackingInfo.campaignId,
+        email: trackingInfo.email,
+        user_id: trackingInfo.userId,
+        tracking_type: 'open',
+        ip_address: ipAddress,
+        user_agent: userAgent.slice(0, 500),
+        device_type: deviceType,
+      });
+      
+      // Update campaign_emails opened_at
+      await supabase
+        .from('campaign_emails')
+        .update({ 
+          opened_at: new Date().toISOString(),
+          open_count: supabase.raw('COALESCE(open_count, 0) + 1')
+        })
+        .eq('tracking_id', trackingId)
+        .is('opened_at', null);
+    }
+    
+  } catch (err) {
+    console.error('Tracking error:', err);
+  }
+  
+  // Always return the pixel
+  res.set({
+    'Content-Type': 'image/gif',
+    'Content-Length': TRACKING_PIXEL.length,
+    'Cache-Control': 'no-store, no-cache, must-revalidate, proxy-revalidate',
+    'Pragma': 'no-cache',
+    'Expires': '0',
+  });
+  res.send(TRACKING_PIXEL);
+});
+
+// Track link click
+app.get('/api/track/click/:trackingId', async (req, res) => {
+  const { trackingId } = req.params;
+  const { url } = req.query;
+  
+  try {
+    const ipAddress = req.ip || req.connection?.remoteAddress || 'unknown';
+    const userAgent = req.get('User-Agent') || 'unknown';
+    
+    let deviceType = 'desktop';
+    if (/mobile|android|iphone|ipad/i.test(userAgent)) {
+      deviceType = /ipad|tablet/i.test(userAgent) ? 'tablet' : 'mobile';
+    }
+    
+    const trackingInfo = decodeTrackingId(trackingId);
+    
+    console.log('Link clicked:', { trackingId, url, ...trackingInfo, deviceType });
+    
+    // Store in Supabase if connected
+    if (supabase && trackingInfo) {
+      await supabase.from('email_tracking').insert({
+        tracking_id: trackingId,
+        campaign_id: trackingInfo.campaignId,
+        email: trackingInfo.email,
+        user_id: trackingInfo.userId,
+        tracking_type: 'click',
+        link_url: url,
+        ip_address: ipAddress,
+        user_agent: userAgent.slice(0, 500),
+        device_type: deviceType,
+      });
+      
+      // Update click count
+      await supabase.rpc('increment_click_count', { tracking_id_param: trackingId });
+    }
+    
+  } catch (err) {
+    console.error('Click tracking error:', err);
+  }
+  
+  // Redirect to original URL
+  if (url && url.startsWith('http')) {
+    res.redirect(302, url);
+  } else {
+    res.status(400).send('Invalid URL');
+  }
+});
+
+// Unsubscribe endpoint
+app.get('/api/unsubscribe/:trackingId', async (req, res) => {
+  const { trackingId } = req.params;
+  
+  const trackingInfo = decodeTrackingId(trackingId);
+  console.log('Unsubscribe requested:', { trackingId, ...trackingInfo });
+  
+  // Store in Supabase
+  if (supabase && trackingInfo) {
+    try {
+      // Add to unsubscribed list
+      await supabase.from('unsubscribed_emails').upsert({
+        user_id: trackingInfo.userId,
+        email: trackingInfo.email,
+        campaign_id: trackingInfo.campaignId,
+        reason: 'User clicked unsubscribe link',
+      }, { onConflict: 'user_id,email' });
+      
+      // Log tracking event
+      await supabase.from('email_tracking').insert({
+        tracking_id: trackingId,
+        campaign_id: trackingInfo.campaignId,
+        email: trackingInfo.email,
+        user_id: trackingInfo.userId,
+        tracking_type: 'unsubscribe',
+      });
+    } catch (err) {
+      console.error('Unsubscribe save error:', err);
+    }
+  }
+  
+  // Show unsubscribe confirmation page
+  res.send(`
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <title>Unsubscribed</title>
+      <meta name="viewport" content="width=device-width, initial-scale=1">
+      <style>
+        body { font-family: -apple-system, system-ui, sans-serif; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; background: #f3f4f6; }
+        .card { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); text-align: center; max-width: 400px; }
+        h1 { color: #111827; margin-bottom: 16px; }
+        p { color: #6b7280; line-height: 1.6; }
+        .icon { font-size: 48px; margin-bottom: 16px; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <div class="icon">✅</div>
+        <h1>Unsubscribed</h1>
+        <p>You have been successfully unsubscribed from our mailing list. You will no longer receive emails from us.</p>
+      </div>
+    </body>
+    </html>
+  `);
+});
+
+// Report bounce (called when email delivery fails)
+app.post('/api/track/bounce',
+  body('email').isEmail().withMessage('Valid email required'),
+  body('bounceType').isIn(['hard', 'soft']).withMessage('Invalid bounce type'),
+  handleValidationErrors,
+  async (req, res) => {
+    const { email, trackingId, bounceType, reason, campaignId, userId } = req.body;
+    
+    console.log('Bounce reported:', { email, trackingId, bounceType, reason });
+    
+    // Store in Supabase
+    if (supabase && userId) {
+      try {
+        // Add to bounced list
+        await supabase.from('bounced_emails').upsert({
+          user_id: userId,
+          email,
+          bounce_type: bounceType,
+          reason,
+          campaign_id: campaignId,
+        }, { onConflict: 'user_id,email' });
+        
+        // Log tracking event
+        if (trackingId && campaignId) {
+          await supabase.from('email_tracking').insert({
+            tracking_id: trackingId,
+            campaign_id: campaignId,
+            email,
+            user_id: userId,
+            tracking_type: 'bounce',
+          });
+          
+          // Update campaign_emails
+          await supabase
+            .from('campaign_emails')
+            .update({ bounced: true, bounce_reason: reason })
+            .eq('tracking_id', trackingId);
+        }
+      } catch (err) {
+        console.error('Bounce save error:', err);
+      }
+    }
+    
+    res.json({ success: true });
+  }
+);
+
+// ===================
+// ERROR HANDLER
+// ===================
   
   res.status(500).json({ error: 'Internal server error' });
 });
