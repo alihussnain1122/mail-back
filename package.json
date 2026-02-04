@@ -3,9 +3,7 @@
   "type": "module",
   "scripts": {
     "start": "node server.js",
-    "dev": "node --watch server.js",
-    "test:webhook": "node test-bounce-webhook.js",
-    "test:webhook:prod": "node test-bounce-webhook.js https://your-domain.vercel.app"
+    "dev": "node --watch server.js"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.50.0",

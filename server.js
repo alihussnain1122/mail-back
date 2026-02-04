@@ -4,7 +4,6 @@ import multer from 'multer';
 
 import { CONFIG, ALLOWED_ORIGINS, isVercel } from './config/index.js';
 import { generalLimiter } from './middleware/validation.js';
-import { createBounceMonitor } from './services/bounce-monitor.js';
 
 // Import routes
 import healthRouter from './routes/health.js';
@@ -14,13 +13,8 @@ import uploadsRouter from './routes/uploads.js';
 import emailRouter from './routes/email.js';
 import trackingRouter from './routes/tracking.js';
 import unsubscribeRouter from './routes/unsubscribe.js';
-import bounceWebhookRouter from './routes/bounce-webhook.js';
-import bounceMonitorRouter from './routes/bounce-monitor.js';
 
 const app = express();
-
-// Bounce monitor instance (started when SMTP config is provided)
-let bounceMonitor = null;
 
 // Trust proxy for proper IP detection behind reverse proxies
 app.set('trust proxy', 1);
@@ -32,9 +26,6 @@ app.set('trust proxy', 1);
 // Tracking routes - NO CORS restriction (called by email clients)
 app.use('/api/track', trackingRouter);
 app.use('/api/unsubscribe', unsubscribeRouter);
-
-// Bounce webhook - NO CORS restriction (called by email service providers)
-app.use('/api/email/bounce-webhook', bounceWebhookRouter);
 
 // CORS for other routes
 app.use(cors({
@@ -66,7 +57,6 @@ app.use('/api/templates', templatesRouter);
 app.use('/api/contacts', contactsRouter);
 app.use('/api/upload', uploadsRouter);
 app.use('/api/send', emailRouter);
-app.use('/api/bounce-monitor', bounceMonitorRouter);
 // Note: tracking and unsubscribe routes are mounted before CORS middleware
 
 // ===================
