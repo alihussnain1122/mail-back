@@ -99,9 +99,17 @@ process.on('unhandledRejection', (reason, promise) => {
 const PORT = CONFIG.port;
 
 if (!process.env.VERCEL) {
+  console.log('\n========================================');
+  console.log('Starting Email Campaign Backend Server');
+  console.log('========================================');
+  console.log('Environment:', process.env.NODE_ENV || 'development');
+  console.log('Port:', PORT);
+  console.log('CORS Origins:', ALLOWED_ORIGINS.join(', '));
+  console.log('========================================\n');
+  
   const server = app.listen(PORT, () => {
-    console.log(`Server running on http://localhost:${PORT}`);
-    console.log(`CORS enabled for: ${ALLOWED_ORIGINS.join(', ')}`);
+    console.log(`✅ Server running on http://localhost:${PORT}`);
+    console.log(`✅ CORS enabled for: ${ALLOWED_ORIGINS.join(', ')}`);
   });
 
   function shutdown(signal) {
@@ -119,6 +127,10 @@ if (!process.env.VERCEL) {
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
+} else {
+  console.log('\n========================================');
+  console.log('Running on Vercel (Serverless)');
+  console.log('========================================\n');
 }
 
 export default app;
