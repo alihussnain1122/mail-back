@@ -68,7 +68,20 @@ router.post('/single',
                        errorMessage.includes('rejected') ||
                        errorMessage.includes('undeliverable') ||
                        errorMessage.includes('mailbox not found') ||
-                       errorMessage.includes('user unknown');
+                       errorMessage.includes('mailbox unavailable') ||
+                       errorMessage.includes('user unknown') ||
+                       errorMessage.includes('unknown user') ||
+                       errorMessage.includes('no such user') ||
+                       errorMessage.includes('does not exist') ||
+                       errorMessage.includes('recipient address rejected') ||
+                       errorMessage.includes('address rejected') ||
+                       errorMessage.includes('undelivered mail') ||
+                       errorMessage.includes('delivery failed') ||
+                       errorMessage.includes('bad destination') ||
+                       errorMessage.includes('invalid recipient') ||
+                       errorMessage.includes('returned to sender') ||
+                       err.code === 'EENVELOPE' ||
+                       (err.responseCode >= 550 && err.responseCode < 560);
       
       if (isBounce && supabase && userId) {
         try {
@@ -88,6 +101,7 @@ router.post('/single',
         success: false, 
         error: err.message,
         isBounce,
+        email,
       });
     } finally {
       if (transporter) transporter.close();
