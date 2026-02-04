@@ -13,6 +13,7 @@ import uploadsRouter from './routes/uploads.js';
 import emailRouter from './routes/email.js';
 import trackingRouter from './routes/tracking.js';
 import unsubscribeRouter from './routes/unsubscribe.js';
+import cleanupRouter from './routes/cleanup.js';
 
 const app = express();
 
@@ -56,6 +57,7 @@ app.use('/api/templates', templatesRouter);
 app.use('/api/contacts', contactsRouter);
 app.use('/api/upload', uploadsRouter);
 app.use('/api/send', emailRouter);
+app.use('/api/cleanup', cleanupRouter);
 // Note: tracking and unsubscribe routes are mounted before CORS middleware
 
 // ===================
