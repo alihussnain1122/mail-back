@@ -53,13 +53,24 @@ router.post('/single',
         htmlBody = injectTracking(htmlBody, trackingId, true);
       }
       
-      const info = await transporter.sendMail({
+      const mailOptions = {
         from: `"${sanitizedSenderName}" <${credentials.emailUser}>`,
         to: email,
         subject: sanitizedSubject,
         html: htmlBody,
         text: htmlBody.replace(/<[^>]+>/g, ''),
-      });
+      };
+
+      // Add custom headers for webhook tracking (used by email providers)
+      if (userId) {
+        mailOptions.headers = {
+          'X-User-ID': userId,
+          'X-Campaign-ID': campaignId || 'none',
+          'X-Tracking-ID': trackingId || 'none'
+        };
+      }
+
+      const info = await transporter.sendMail(mailOptions);
       
       res.json({ 
         success: true, 

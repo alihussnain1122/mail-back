@@ -13,6 +13,7 @@ import uploadsRouter from './routes/uploads.js';
 import emailRouter from './routes/email.js';
 import trackingRouter from './routes/tracking.js';
 import unsubscribeRouter from './routes/unsubscribe.js';
+import bounceWebhookRouter from './routes/bounce-webhook.js';
 
 const app = express();
 
@@ -26,6 +27,9 @@ app.set('trust proxy', 1);
 // Tracking routes - NO CORS restriction (called by email clients)
 app.use('/api/track', trackingRouter);
 app.use('/api/unsubscribe', unsubscribeRouter);
+
+// Bounce webhook - NO CORS restriction (called by email service providers)
+app.use('/api/email/bounce-webhook', bounceWebhookRouter);
 
 // CORS for other routes
 app.use(cors({
