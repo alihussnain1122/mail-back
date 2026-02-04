@@ -61,6 +61,8 @@ router.post('/single',
       });
     } catch (err) {
       console.error('Send error:', err.message);
+      console.error('Error code:', err.code);
+      console.error('Response code:', err.responseCode);
       
       const errorMessage = err.message.toLowerCase();
       const isBounce = errorMessage.includes('not exist') || 
@@ -83,17 +85,41 @@ router.post('/single',
                        err.code === 'EENVELOPE' ||
                        (err.responseCode >= 550 && err.responseCode < 560);
       
-      if (isBounce && supabase && userId) {
-        try {
-          await supabase.from('bounced_emails').upsert({
-            user_id: userId,
-            email,
-            bounce_type: 'hard',
-            reason: err.message,
-            campaign_id: campaignId,
-          }, { onConflict: 'user_id,email' });
-        } catch (bounceErr) {
-          console.error('Failed to record bounce:', bounceErr);
+      console.log('Bounce detected:', isBounce);
+      console.log('Supabase client:', supabase ? 'initialized' : 'NULL');
+      console.log('User ID:', userId);
+      console.log('Campaign ID:', campaignId);
+      console.log('Email:', email);
+      
+      if (isBounce) {
+        if (!userId) {
+          console.error('⚠️  Cannot record bounce: userId is missing');
+        } else if (!supabase) {
+          console.error('⚠️  Cannot record bounce: Supabase client not initialized');
+        } else {
+          console.log('Attempting to record bounce for:', email);
+          try {
+            const { data, error: bounceError } = await supabase.from('bounced_emails').upsert({
+              user_id: userId,
+              email,
+              bounce_type: 'hard',
+              reason: err.message.slice(0, 500),
+              campaign_id: campaignId || null,
+            }, { onConflict: 'user_id,email' });
+            
+            if (bounceError) {
+              console.error('Failed to record bounce - Supabase error:', bounceError);
+              console.error('Error code:', bounceError.code);
+              console.error('Error details:', bounceError.details);
+              if (bounceError.code === '23503') {
+                console.error('⚠️  Foreign key constraint error - user_id may not exist in auth.users table');
+              }
+            } else {
+              console.log('✅ Bounce recorded successfully for:', email);
+            }
+          } catch (bounceErr) {
+            console.error('Failed to record bounce - Exception:', bounceErr);
+          }
         }
       }
       
