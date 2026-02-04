@@ -9,7 +9,7 @@ router.get('/:trackingId', async (req, res) => {
   const { trackingId } = req.params;
   
   const trackingInfo = decodeTrackingId(trackingId);
-  console.log('Unsubscribe requested:', { trackingId, ...trackingInfo });
+
   
   if (supabase && trackingInfo) {
     try {

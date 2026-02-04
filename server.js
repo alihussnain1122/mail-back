@@ -37,7 +37,6 @@ app.use(cors({
     if (ALLOWED_ORIGINS.includes(origin)) {
       return callback(null, true);
     }
-    console.log('CORS rejected origin:', origin);
     callback(new Error('Not allowed by CORS'));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
