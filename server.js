@@ -67,8 +67,6 @@ app.use('/api/send', requireAuth, emailRouter);
 app.use('/api/cleanup', requireAuth, cleanupRouter);
 app.use('/api/ai', requireAuth, aiRouter);
 app.use('/api/campaign', campaignRouter); // Has its own auth middleware
-app.use('/api/cleanup', cleanupRouter);
-app.use('/api/ai', aiRouter);
 // Note: tracking and unsubscribe routes are mounted before CORS middleware
 
 // ===================
