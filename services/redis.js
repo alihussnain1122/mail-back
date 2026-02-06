@@ -5,7 +5,6 @@
 
 import { Ratelimit } from '@upstash/ratelimit';
 import { Redis } from '@upstash/redis';
-import rateLimit from 'express-rate-limit';
 import { UPSTASH_REDIS_URL, UPSTASH_REDIS_TOKEN } from '../config/index.js';
 
 // Check if Upstash is configured
@@ -74,40 +73,27 @@ function createRateLimiter(upstashLimiter, fallbackConfig, identifierFn) {
     };
   }
 
-  // Fallback to express-rate-limit (in-memory)
-  return rateLimit({
-    windowMs: fallbackConfig.windowMs,
-    max: fallbackConfig.max,
-    message: { error: fallbackConfig.message, code: 'RATE_LIMITED' },
-    keyGenerator: (req) => {
-      const identifier = identifierFn(req);
-      // Handle IPv6 addresses - normalize to prevent bypasses
-      if (identifier && identifier.includes(':')) {
-        return identifier.split(':').slice(0, 4).join(':'); // Use first 64 bits
-      }
-      return identifier;
-    },
-    standardHeaders: true,
-    legacyHeaders: false,
-  });
+  // Fallback: no rate limiting if Upstash not configured
+  console.warn('⚠️ Rate limiting disabled (Upstash not configured)');
+  return (req, res, next) => next();
 }
 
 // Export rate limiters
 export const redisEmailLimiter = createRateLimiter(
   emailRatelimit,
-  { windowMs: 60 * 1000, max: 10, message: 'Email rate limit exceeded' },
+  null,
   (req) => req.user?.id || req.ip
 );
 
 export const redisGeneralLimiter = createRateLimiter(
   generalRatelimit,
-  { windowMs: 15 * 60 * 1000, max: 100, message: 'Too many requests' },
+  null,
   (req) => req.ip
 );
 
 export const redisCampaignLimiter = createRateLimiter(
   campaignRatelimit,
-  { windowMs: 60 * 1000, max: 5, message: 'Campaign operation rate limit exceeded' },
+  null,
   (req) => req.user?.id || req.ip
 );
 
