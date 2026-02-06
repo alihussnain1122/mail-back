@@ -17,7 +17,16 @@ import trackingRouter from './routes/tracking.js';
 import unsubscribeRouter from './routes/unsubscribe.js';
 import cleanupRouter from './routes/cleanup.js';
 import aiRouter from './routes/ai.js';
-import campaignRouter from './routes/campaign.js';
+
+let campaignRouter = null;
+try {
+  const campaign = await import('./routes/campaign.js');
+  campaignRouter = campaign.default;
+  console.log('✅ Campaign router loaded successfully');
+} catch (error) {
+  console.error('❌ Failed to load campaign router:', error.message);
+  console.error(error.stack);
+}
 
 const app = express();
 
@@ -66,7 +75,12 @@ app.use('/api/upload', requireAuth, uploadsRouter);
 app.use('/api/send', requireAuth, emailRouter);
 app.use('/api/cleanup', requireAuth, cleanupRouter);
 app.use('/api/ai', requireAuth, aiRouter);
-app.use('/api/campaign', campaignRouter); // Has its own auth middleware
+if (campaignRouter) {
+  app.use('/api/campaign', campaignRouter); // Has its own auth middleware
+  console.log('✅ Campaign routes registered at /api/campaign');
+} else {
+  console.warn('⚠️ Campaign routes not available');
+}
 // Note: tracking and unsubscribe routes are mounted before CORS middleware
 
 // ===================
