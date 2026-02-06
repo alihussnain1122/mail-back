@@ -168,6 +168,22 @@ router.post('/start',
         currentIndex: 0,
         total: contacts.length,
       });
+    } else {
+      // Fallback: Store in database (not recommended for production due to security)
+      console.warn('⚠️ Storing credentials in database - configure Upstash Redis for production');
+      await supabase
+        .from('campaigns')
+        .update({
+          credentials_temp: JSON.stringify({
+            smtpHost: credentials.smtpHost,
+            smtpPort: credentials.smtpPort,
+            emailUser: credentials.emailUser,
+            emailPass: credentials.emailPass,
+            senderName: credentials.senderName,
+          }),
+          template_data: JSON.stringify({ template, senderName, delayMs, enableTracking }),
+        })
+        .eq('id', campaignId);
     }
 
     // Start processing in background (non-blocking)
@@ -423,6 +439,14 @@ async function processCampaign(campaignId, userId) {
     let queueData = null;
     if (isUpstashConfigured) {
       queueData = await campaignQueue.getStatus(campaignId, userId);
+    } else {
+      // Fallback: Get from database
+      if (campaign.credentials_temp && campaign.template_data) {
+        queueData = {
+          credentials: JSON.parse(campaign.credentials_temp),
+          ...JSON.parse(campaign.template_data),
+        };
+      }
     }
 
     if (!queueData?.credentials) {
