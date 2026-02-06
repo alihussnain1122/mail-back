@@ -146,7 +146,6 @@ router.post('/start',
         details: err.message
       });
     }
-    }
 
     // Queue campaign for processing (store credentials temporarily)
     if (isUpstashConfigured) {
