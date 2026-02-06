@@ -7,6 +7,7 @@ export const CONFIG = {
   defaultSenderName: process.env.DEFAULT_SENDER_NAME || 'Support Team',
   maxFileSize: 5 * 1024 * 1024, // 5MB
   backendUrl: process.env.BACKEND_URL || 'https://mail-back-nine.vercel.app',
+  groqApiKey: process.env.GROQ_API_KEY, // For AI template generation
 };
 
 export const SUPABASE_URL = process.env.SUPABASE_URL || 'https://otkpdhkerefqaulhagqw.supabase.co';
