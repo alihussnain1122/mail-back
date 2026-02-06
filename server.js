@@ -4,6 +4,8 @@ import multer from 'multer';
 
 import { CONFIG, ALLOWED_ORIGINS, isVercel } from './config/index.js';
 import { generalLimiter } from './middleware/validation.js';
+import { requireAuth, optionalAuth } from './middleware/auth.js';
+import { redisGeneralLimiter, redisEmailLimiter } from './services/redis.js';
 
 // Import routes
 import healthRouter from './routes/health.js';
@@ -15,6 +17,7 @@ import trackingRouter from './routes/tracking.js';
 import unsubscribeRouter from './routes/unsubscribe.js';
 import cleanupRouter from './routes/cleanup.js';
 import aiRouter from './routes/ai.js';
+import campaignRouter from './routes/campaign.js';
 
 const app = express();
 
@@ -47,17 +50,23 @@ app.use(cors({
 }));
 
 // Rate limiting & JSON parsing
-app.use(generalLimiter);
+app.use(redisGeneralLimiter);
 app.use(express.json({ limit: '10mb' }));
 
 // ===================
 // ROUTES
 // ===================
+// Public routes (no auth required)
 app.use('/api', healthRouter);
-app.use('/api/templates', templatesRouter);
-app.use('/api/contacts', contactsRouter);
-app.use('/api/upload', uploadsRouter);
-app.use('/api/send', emailRouter);
+
+// Protected routes (require authentication)
+app.use('/api/templates', requireAuth, templatesRouter);
+app.use('/api/contacts', requireAuth, contactsRouter);
+app.use('/api/upload', requireAuth, uploadsRouter);
+app.use('/api/send', requireAuth, emailRouter);
+app.use('/api/cleanup', requireAuth, cleanupRouter);
+app.use('/api/ai', requireAuth, aiRouter);
+app.use('/api/campaign', campaignRouter); // Has its own auth middleware
 app.use('/api/cleanup', cleanupRouter);
 app.use('/api/ai', aiRouter);
 // Note: tracking and unsubscribe routes are mounted before CORS middleware

@@ -4,8 +4,63 @@ import { handleValidationErrors } from '../middleware/validation.js';
 import { decodeTrackingId } from '../services/helpers.js';
 import { TRACKING_PIXEL } from '../services/email.js';
 import { supabase } from '../services/supabase.js';
+import { CONFIG } from '../config/index.js';
 
 const router = express.Router();
+
+// Allowed redirect domains (add your domains here)
+const ALLOWED_REDIRECT_DOMAINS = [
+  // Add your trusted domains
+  'google.com',
+  'linkedin.com',
+  'twitter.com',
+  'facebook.com',
+  'github.com',
+  'youtube.com',
+  'calendly.com',
+  'hubspot.com',
+  'typeform.com',
+  'notion.so',
+  // Add more as needed
+];
+
+/**
+ * Validate redirect URL to prevent open redirect attacks
+ */
+function isValidRedirectUrl(url) {
+  if (!url) return false;
+  
+  try {
+    const parsed = new URL(url);
+    
+    // Must be http or https
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+      return false;
+    }
+    
+    // Check against allowed domains
+    const domain = parsed.hostname.toLowerCase();
+    
+    // Allow if domain or any parent domain is in allowlist
+    for (const allowed of ALLOWED_REDIRECT_DOMAINS) {
+      if (domain === allowed || domain.endsWith('.' + allowed)) {
+        return true;
+      }
+    }
+    
+    // Also allow if it matches the frontend URL domain
+    try {
+      const frontendDomain = new URL(CONFIG.frontendUrl).hostname;
+      if (domain === frontendDomain || domain.endsWith('.' + frontendDomain)) {
+        return true;
+      }
+    } catch {}
+    
+    return false;
+  } catch {
+    return false;
+  }
+}
 
 // Track email open (via pixel)
 router.get('/open/:trackingId', async (req, res) => {
@@ -20,15 +75,19 @@ router.get('/open/:trackingId', async (req, res) => {
       deviceType = /ipad|tablet/i.test(userAgent) ? 'tablet' : 'mobile';
     }
     
+    // Verify and decode the signed tracking ID
     const trackingInfo = decodeTrackingId(trackingId);
     
-
+    // If signature verification fails, trackingInfo will be null
+    if (!trackingInfo) {
+      console.warn('Invalid tracking ID signature:', trackingId.slice(0, 20) + '...');
+    }
     
     if (supabase && trackingInfo) {
-      const { data, error } = await supabase.from('email_tracking').insert({
+      const { error } = await supabase.from('email_tracking').insert({
         tracking_id: trackingId,
         campaign_id: trackingInfo.campaignId,
-        email: trackingInfo.email,
+        email_hash: trackingInfo.emailHash, // Store hash, not actual email
         user_id: trackingInfo.userId,
         tracking_type: 'open',
         ip_address: ipAddress,
@@ -38,8 +97,6 @@ router.get('/open/:trackingId', async (req, res) => {
       
       if (error) {
         console.error('Supabase insert error:', error);
-      } else {
-
       }
       
       // Update campaign_emails opened_at (if exists)
@@ -78,15 +135,18 @@ router.get('/click/:trackingId', async (req, res) => {
       deviceType = /ipad|tablet/i.test(userAgent) ? 'tablet' : 'mobile';
     }
     
+    // Verify and decode the signed tracking ID
     const trackingInfo = decodeTrackingId(trackingId);
     
-
+    if (!trackingInfo) {
+      console.warn('Invalid click tracking ID signature');
+    }
     
     if (supabase && trackingInfo) {
       await supabase.from('email_tracking').insert({
         tracking_id: trackingId,
         campaign_id: trackingInfo.campaignId,
-        email: trackingInfo.email,
+        email_hash: trackingInfo.emailHash, // Store hash, not actual email
         user_id: trackingInfo.userId,
         tracking_type: 'click',
         link_url: url,
@@ -107,8 +167,13 @@ router.get('/click/:trackingId', async (req, res) => {
     console.error('Click tracking error:', err);
   }
   
-  if (url && url.startsWith('http')) {
+  // Validate redirect URL to prevent open redirect attacks
+  if (url && isValidRedirectUrl(url)) {
     res.redirect(302, url);
+  } else if (url) {
+    // Log potential attack attempt
+    console.warn('Blocked redirect to untrusted URL:', url);
+    res.status(400).send('Redirect to this URL is not allowed');
   } else {
     res.status(400).send('Invalid URL');
   }
