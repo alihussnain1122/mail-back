@@ -93,7 +93,7 @@ router.post('/start',
     const campaignId = crypto.randomUUID();
     
     try {
-      await supabase.from('campaigns').insert({
+      const { error: campaignError } = await supabase.from('campaigns').insert({
         id: campaignId,
         user_id: userId,
         name: campaignName || `Campaign ${new Date().toLocaleDateString()}`,
@@ -107,6 +107,13 @@ router.post('/start',
         sender_name: senderName || credentials.senderName,
         started_at: new Date().toISOString(),
       });
+
+      if (campaignError) {
+        console.error('Campaign insert error:', campaignError);
+        throw campaignError;
+      }
+
+      console.log('✅ Campaign created:', campaignId);
 
       // Insert campaign emails
       const emailRecords = contacts.map((contact, index) => ({
@@ -125,15 +132,20 @@ router.post('/start',
         .insert(emailRecords);
 
       if (insertError) {
+        console.error('Campaign emails insert error:', insertError);
         throw insertError;
       }
+
+      console.log('✅ Campaign emails inserted:', emailRecords.length);
 
     } catch (err) {
       console.error('Campaign creation error:', err);
       return res.status(500).json({ 
         success: false, 
-        error: 'Failed to create campaign' 
+        error: 'Failed to create campaign',
+        details: err.message
       });
+    }
     }
 
     // Queue campaign for processing (store credentials temporarily)
