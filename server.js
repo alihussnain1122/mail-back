@@ -81,10 +81,7 @@ app.use((err, req, res, next) => {
 app.use((req, res) => {
   res.status(404).json({ error: 'Endpoint not found' });
 });
-
-// ===================
 // PROCESS ERROR HANDLERS
-// ===================
 process.on('uncaughtException', (err) => {
   console.error('Uncaught Exception:', err);
   setTimeout(() => process.exit(1), 1000);
@@ -93,10 +90,7 @@ process.on('uncaughtException', (err) => {
 process.on('unhandledRejection', (reason, promise) => {
   console.error('Unhandled Rejection at:', promise, 'reason:', reason);
 });
-
-// ===================
 // START SERVER
-// ===================
 const PORT = CONFIG.port;
 
 if (!process.env.VERCEL) {
