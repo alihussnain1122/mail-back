@@ -34,7 +34,7 @@ export function requireAuth(req, res, next) {
     // Verify the JWT token
     const decoded = jwt.verify(token, JWT_SECRET, {
       algorithms: ['HS256'],
-      issuer: 'supabase',
+      // Don't validate issuer - Supabase uses dynamic issuer based on project URL
     });
 
     // Attach user info to request
