@@ -79,7 +79,14 @@ function createRateLimiter(upstashLimiter, fallbackConfig, identifierFn) {
     windowMs: fallbackConfig.windowMs,
     max: fallbackConfig.max,
     message: { error: fallbackConfig.message, code: 'RATE_LIMITED' },
-    keyGenerator: identifierFn,
+    keyGenerator: (req) => {
+      const identifier = identifierFn(req);
+      // Handle IPv6 addresses - normalize to prevent bypasses
+      if (identifier && identifier.includes(':')) {
+        return identifier.split(':').slice(0, 4).join(':'); // Use first 64 bits
+      }
+      return identifier;
+    },
     standardHeaders: true,
     legacyHeaders: false,
   });
