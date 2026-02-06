@@ -3,49 +3,11 @@
  * Validates Supabase JWT tokens on protected routes
  */
 
-import jwt from 'jsonwebtoken';
-import crypto from 'crypto';
-import { JWT_SECRET, JWT_PUBLIC_KEY, SUPABASE_URL } from '../config/index.js';
-
-// Cache for JWKS public keys
-let jwksCache = null;
-let jwksCacheTime = 0;
-const JWKS_CACHE_DURATION = 3600000; // 1 hour
-
-/**
- * Fetch JWKS from Supabase
- */
-async function getJWKS() {
-  const now = Date.now();
-  
-  // Return cached JWKS if still valid
-  if (jwksCache && (now - jwksCacheTime) < JWKS_CACHE_DURATION) {
-    return jwksCache;
-  }
-  
-  try {
-    const jwksUrl = `${SUPABASE_URL}/.well-known/jwks.json`;
-    const response = await fetch(jwksUrl);
-    jwksCache = await response.json();
-    jwksCacheTime = now;
-    return jwksCache;
-  } catch (error) {
-    console.error('Failed to fetch JWKS:', error);
-    return null;
-  }
-}
-
-/**
- * Get public key from JWKS for a given key ID
- */
-function jwkToPem(jwk) {
-  // For ES256, convert JWK to PEM format
-  return crypto.createPublicKey({ key: jwk, format: 'jwk' });
-}
+import { supabase } from '../services/supabase.js';
 
 /**
  * Middleware to require valid Supabase JWT authentication
- * Extracts user info and attaches to req.user
+ * Uses Supabase SDK to verify tokens
  */
 export async function requireAuth(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -60,80 +22,30 @@ export async function requireAuth(req, res, next) {
   const token = authHeader.split(' ')[1];
 
   try {
-    // Decode token header to get algorithm and key ID
-    const decodedHeader = jwt.decode(token, { complete: true });
-    const algorithm = decodedHeader?.header?.alg;
-    
-    console.log('🔐 Token algorithm:', algorithm);
+    // Use Supabase SDK to verify the JWT token
+    const { data: { user }, error } = await supabase.auth.getUser(token);
 
-    let verificationKey;
-    
-    if (algorithm === 'ES256') {
-      // For ES256, fetch public key from JWKS
-      console.log('Fetching JWKS from:', `${SUPABASE_URL}/.well-known/jwks.json`);
-      const jwks = await getJWKS();
-      
-      if (!jwks || !jwks.keys || jwks.keys.length === 0) {
-        console.error('❌ Failed to fetch JWKS or no keys found');
-        throw new Error('Failed to fetch JWKS');
-      }
-      
-      console.log('📦 JWKS fetched, keys count:', jwks.keys.length);
-      
-      // Use the first key (or match by kid if needed)
-      const jwk = jwks.keys[0];
-      console.log('🔑 Using JWK kid:', jwk.kid);
-      
-      verificationKey = jwkToPem(jwk);
-      console.log('✅ Using JWKS public key for ES256');
-    } else {
-      // For HS256, use the JWT secret
-      verificationKey = JWT_SECRET;
-      if (!verificationKey) {
-        console.error('❌ JWT_SECRET not configured');
-        return res.status(500).json({ 
-          error: 'Server configuration error',
-          code: 'CONFIG_ERROR'
-        });
-      }
-      console.log('✅ Using JWT_SECRET for HS256');
+    if (error || !user) {
+      console.error('❌ Token verification failed:', error?.message);
+      return res.status(401).json({ 
+        error: 'Invalid authentication token.',
+        code: 'INVALID_TOKEN'
+      });
     }
 
-    // Verify the JWT token
-    const decoded = jwt.verify(token, verificationKey, {
-      algorithms: ['HS256', 'ES256']
-    });
-
-    console.log('✅ Token verified successfully for user:', decoded.sub);
+    console.log('✅ Token verified successfully for user:', user.id);
 
     // Attach user info to request
     req.user = {
-      id: decoded.sub,
-      email: decoded.email,
-      role: decoded.role,
-      aud: decoded.aud,
+      id: user.id,
+      email: user.email,
+      role: user.role,
+      aud: user.aud,
     };
 
     next();
   } catch (error) {
-    console.error('❌ JWT verification failed:', error.name, error.message);
-    console.error('Full error:', error);
-    
-    if (error.name === 'TokenExpiredError') {
-      return res.status(401).json({ 
-        error: 'Session expired. Please log in again.',
-        code: 'TOKEN_EXPIRED'
-      });
-    }
-    
-    if (error.name === 'JsonWebTokenError') {
-      return res.status(401).json({ 
-        error: 'Invalid authentication token.',
-        code: 'INVALID_TOKEN',
-        details: error.message
-      });
-    }
-
+    console.error('❌ Auth error:', error.message);
     return res.status(401).json({ 
       error: 'Authentication failed.',
       code: 'AUTH_FAILED',
