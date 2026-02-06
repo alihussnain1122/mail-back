@@ -70,14 +70,21 @@ export async function requireAuth(req, res, next) {
     
     if (algorithm === 'ES256') {
       // For ES256, fetch public key from JWKS
+      console.log('Fetching JWKS from:', `${SUPABASE_URL}/.well-known/jwks.json`);
       const jwks = await getJWKS();
+      
       if (!jwks || !jwks.keys || jwks.keys.length === 0) {
+        console.error('❌ Failed to fetch JWKS or no keys found');
         throw new Error('Failed to fetch JWKS');
       }
       
+      console.log('📦 JWKS fetched, keys count:', jwks.keys.length);
+      
       // Use the first key (or match by kid if needed)
       const jwk = jwks.keys[0];
-      verificationKey = await jwkToPem(jwk);
+      console.log('🔑 Using JWK kid:', jwk.kid);
+      
+      verificationKey = jwkToPem(jwk);
       console.log('✅ Using JWKS public key for ES256');
     } else {
       // For HS256, use the JWT secret
@@ -110,6 +117,7 @@ export async function requireAuth(req, res, next) {
     next();
   } catch (error) {
     console.error('❌ JWT verification failed:', error.name, error.message);
+    console.error('Full error:', error);
     
     if (error.name === 'TokenExpiredError') {
       return res.status(401).json({ 
@@ -126,10 +134,10 @@ export async function requireAuth(req, res, next) {
       });
     }
 
-    console.error('Auth error:', error);
     return res.status(401).json({ 
       error: 'Authentication failed.',
-      code: 'AUTH_FAILED'
+      code: 'AUTH_FAILED',
+      details: error.message
     });
   }
 }
