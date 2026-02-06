@@ -27,7 +27,8 @@ const LIMITS = {
   MAX_CONCURRENT_CAMPAIGNS: 3,       // Max campaigns running at once per user
   MIN_DELAY_MS: 5000,                // Minimum 5 seconds between emails
   MAX_DELAY_MS: 300000,              // Maximum 5 minutes between emails
-  DEFAULT_DELAY_MS: 15000,           // Default 15 seconds
+  DEFAULT_MIN_DELAY_MS: 10000,       // Default minimum 10 seconds
+  DEFAULT_MAX_DELAY_MS: 30000,       // Default maximum 30 seconds
 };
 
 /**
@@ -41,7 +42,8 @@ router.post('/start',
   body('template.subject').notEmpty().withMessage('Template subject is required'),
   body('template.body').notEmpty().withMessage('Template body is required'),
   body('credentials').notEmpty().withMessage('SMTP credentials are required'),
-  body('delayMs').optional().isInt({ min: LIMITS.MIN_DELAY_MS, max: LIMITS.MAX_DELAY_MS }),
+  body('delayMin').optional().isInt({ min: LIMITS.MIN_DELAY_MS, max: LIMITS.MAX_DELAY_MS }),
+  body('delayMax').optional().isInt({ min: LIMITS.MIN_DELAY_MS, max: LIMITS.MAX_DELAY_MS }),
   handleValidationErrors,
   async (req, res) => {
     const { 
@@ -49,7 +51,8 @@ router.post('/start',
       template, 
       credentials, 
       senderName, 
-      delayMs = LIMITS.DEFAULT_DELAY_MS,
+      delayMin = LIMITS.DEFAULT_MIN_DELAY_MS,
+      delayMax = LIMITS.DEFAULT_MAX_DELAY_MS,
       campaignName,
       enableTracking = true,
     } = req.body;
@@ -101,7 +104,8 @@ router.post('/start',
         total_emails: contacts.length,
         sent_count: 0,
         failed_count: 0,
-        delay_ms: delayMs,
+        delay_min: delayMin,
+        delay_max: delayMax,
         template_subject: template.subject,
         template_body: template.body,
         sender_name: senderName || credentials.senderName,
@@ -162,7 +166,8 @@ router.post('/start',
         },
         template,
         senderName,
-        delayMs,
+        delayMin,
+        delayMax,
         enableTracking,
         status: 'running',
         currentIndex: 0,
@@ -181,7 +186,7 @@ router.post('/start',
             emailPass: credentials.emailPass,
             senderName: credentials.senderName,
           }),
-          template_data: JSON.stringify({ template, senderName, delayMs, enableTracking }),
+          template_data: JSON.stringify({ template, senderName, delayMin, delayMax, enableTracking }),
         })
         .eq('id', campaignId);
     }
@@ -458,7 +463,7 @@ async function processCampaign(campaignId, userId) {
       return;
     }
 
-    const { credentials, template, senderName, delayMs, enableTracking } = queueData;
+    const { credentials, template, senderName, delayMin, delayMax, enableTracking } = queueData;
 
     // Create transporter
     transporter = createTransporterFromCredentials(credentials);
@@ -477,17 +482,22 @@ async function processCampaign(campaignId, userId) {
     }
 
     if (!pendingEmails || pendingEmails.length === 0) {
-      // Campaign complete
+      // Campaign complete - clear sensitive data
       await supabase
         .from('campaigns')
-        .update({ status: 'completed', completed_at: new Date().toISOString() })
+        .update({ 
+          status: 'completed', 
+          completed_at: new Date().toISOString(),
+          credentials_temp: null,
+          template_data: null,
+        })
         .eq('id', campaignId);
       
       if (isUpstashConfigured) {
         await campaignQueue.dequeue(campaignId, userId);
       }
       
-      console.log(`Campaign ${campaignId} completed`);
+      console.log(`✅ Campaign ${campaignId} completed (no pending emails)`);
       return;
     }
 
@@ -575,8 +585,12 @@ async function processCampaign(campaignId, userId) {
         await supabase.rpc('increment_campaign_failed', { campaign_id: campaignId });
       }
 
-      // Wait before next email
-      await new Promise(resolve => setTimeout(resolve, delayMs));
+      // Wait with random delay before next email
+      const minDelay = delayMin || LIMITS.DEFAULT_MIN_DELAY_MS;
+      const maxDelay = delayMax || LIMITS.DEFAULT_MAX_DELAY_MS;
+      const randomDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
+      console.log(`Waiting ${randomDelay}ms before next email...`);
+      await new Promise(resolve => setTimeout(resolve, randomDelay));
     }
 
     // Check if more emails to process
@@ -591,15 +605,22 @@ async function processCampaign(campaignId, userId) {
       // Continue processing
       processCampaign(campaignId, userId);
     } else {
-      // Mark complete
+      // Mark complete and clear sensitive data
       await supabase
         .from('campaigns')
-        .update({ status: 'completed', completed_at: new Date().toISOString() })
+        .update({ 
+          status: 'completed', 
+          completed_at: new Date().toISOString(),
+          credentials_temp: null,  // Clear credentials for security
+          template_data: null,
+        })
         .eq('id', campaignId);
       
       if (isUpstashConfigured) {
         await campaignQueue.dequeue(campaignId, userId);
       }
+      
+      console.log(`✅ Campaign ${campaignId} completed successfully`);
     }
 
   } catch (err) {
