@@ -52,6 +52,7 @@ router.post('/generate-template',
       tone, 
       audience, 
       keyPoints,
+      availableFields,
       userId 
     } = req.body;
 
@@ -62,6 +63,19 @@ router.post('/generate-template',
       });
     }
 
+    // Build personalization instructions based on available fields
+    const fields = availableFields || ['email'];
+    const fieldDescriptions = {
+      email: '{{email}} - Recipient\'s email address',
+      firstName: '{{firstName}} - Recipient\'s first name',
+      lastName: '{{lastName}} - Recipient\'s last name', 
+      company: '{{company}} - Recipient\'s company name',
+      position: '{{position}} - Recipient\'s job title/position',
+    };
+    
+    const availableVars = fields.map(f => fieldDescriptions[f]).filter(Boolean);
+    const hasPersonalization = fields.some(f => f !== 'email');
+
     const prompt = `You are an expert cold email copywriter. Generate a high-converting cold email template.
 
 REQUIREMENTS:
@@ -71,16 +85,22 @@ REQUIREMENTS:
 - Target Audience: ${audience || 'Business professionals'}
 - Key Points to Include: ${keyPoints?.length > 0 ? keyPoints.join(', ') : 'Value proposition, clear CTA'}
 
+AVAILABLE PERSONALIZATION VARIABLES (use ONLY these):
+${availableVars.join('\n')}
+
 STRICT RULES:
-1. MUST include these personalization variables exactly as shown:
-   - {{firstName}} - Recipient's first name
-   - {{company}} - Recipient's company name
+1. ${hasPersonalization ? 'Use the available personalization variables naturally in the email' : 'DO NOT use any personalization variables like {{firstName}} or {{company}} - write a generic but engaging email'}
 2. Subject line MUST be under 50 characters
 3. Email body MUST be under 150 words
 4. Include ONE clear call-to-action
 5. Be professional but engaging
 6. No spam trigger words
 7. Make it feel personal, not mass-sent
+${!hasPersonalization ? '8. Since no name is available, use engaging opening like "Hi there," or "Hello," instead of {{firstName}}' : ''}
+9. MUST end with a professional closing that includes:
+   - A sign-off (Best regards, Cheers, Thanks, etc.)
+   - {{senderName}} placeholder for sender's name
+   - Optionally {{senderTitle}} if appropriate
 
 RESPOND ONLY WITH VALID JSON (no markdown, no code blocks):
 {"subject": "your subject here", "body": "your email body here with proper line breaks using actual newlines"}`;
