@@ -13,6 +13,7 @@ export const CONFIG = {
 export const SUPABASE_URL = process.env.SUPABASE_URL;
 export const SUPABASE_SERVICE_KEY = process.env.SUPABASE_SERVICE_KEY;
 export const JWT_SECRET = process.env.SUPABASE_JWT_SECRET; // From Supabase dashboard > Settings > API > JWT Secret
+export const JWT_PUBLIC_KEY = process.env.SUPABASE_JWT_PUBLIC_KEY; // For ES256 token verification
 export const HMAC_SECRET = process.env.HMAC_SECRET || 'change-this-in-production'; // For signing tracking IDs
 export const UPSTASH_REDIS_URL = process.env.UPSTASH_REDIS_REST_URL;
 export const UPSTASH_REDIS_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
