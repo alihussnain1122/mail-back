@@ -483,7 +483,9 @@ async function processCampaign(campaignId, userId) {
 
     if (!pendingEmails || pendingEmails.length === 0) {
       // Campaign complete - clear sensitive data
-      await supabase
+      console.log(`✅ No pending emails found for campaign ${campaignId}, marking as completed`);
+      
+      const { error: updateError } = await supabase
         .from('campaigns')
         .update({ 
           status: 'completed', 
@@ -493,11 +495,16 @@ async function processCampaign(campaignId, userId) {
         })
         .eq('id', campaignId);
       
+      if (updateError) {
+        console.error('Failed to update campaign status:', updateError);
+      } else {
+        console.log(`✅ Campaign ${campaignId} status updated to completed`);
+      }
+      
       if (isUpstashConfigured) {
         await campaignQueue.dequeue(campaignId, userId);
       }
       
-      console.log(`✅ Campaign ${campaignId} completed (no pending emails)`);
       return;
     }
 
@@ -556,22 +563,47 @@ async function processCampaign(campaignId, userId) {
         });
 
         // Update email record
-        await supabase
+        const { error: updateError } = await supabase
           .from('campaign_emails')
           .update({ 
             status: 'sent', 
             sent_at: new Date().toISOString(),
-            message_id: info.messageId,
           })
           .eq('id', emailRecord.id);
 
-        // Update campaign count
-        await supabase.rpc('increment_campaign_sent', { campaign_id: campaignId });
+        if (updateError) {
+          console.error('Failed to update email record:', updateError);
+        } else {
+          console.log(`✅ Email record updated for ${emailRecord.email}`);
+        }
 
-        console.log(`Sent to ${emailRecord.email}`);
+        // Update campaign count - use RPC or direct update
+        const { error: rpcError } = await supabase.rpc('increment_campaign_sent', { campaign_id: campaignId });
+        
+        if (rpcError) {
+          console.warn('RPC increment failed, using direct update:', rpcError.message);
+          // Fallback: direct update
+          const { data: currentCampaign } = await supabase
+            .from('campaigns')
+            .select('sent_count')
+            .eq('id', campaignId)
+            .single();
+          
+          if (currentCampaign) {
+            await supabase
+              .from('campaigns')
+              .update({ sent_count: (currentCampaign.sent_count || 0) + 1 })
+              .eq('id', campaignId);
+            console.log(`✅ Sent count updated to ${(currentCampaign.sent_count || 0) + 1}`);
+          }
+        } else {
+          console.log(`✅ Sent count incremented via RPC`);
+        }
+
+        console.log(`✅ Sent to ${emailRecord.email}`);
 
       } catch (sendError) {
-        console.error(`Failed to send to ${emailRecord.email}:`, sendError.message);
+        console.error(`❌ Failed to send to ${emailRecord.email}:`, sendError.message);
         
         await supabase
           .from('campaign_emails')
@@ -582,7 +614,24 @@ async function processCampaign(campaignId, userId) {
           })
           .eq('id', emailRecord.id);
 
-        await supabase.rpc('increment_campaign_failed', { campaign_id: campaignId });
+        // Update failed count
+        const { error: rpcError } = await supabase.rpc('increment_campaign_failed', { campaign_id: campaignId });
+        
+        if (rpcError) {
+          console.warn('RPC increment failed, using direct update:', rpcError.message);
+          const { data: currentCampaign } = await supabase
+            .from('campaigns')
+            .select('failed_count')
+            .eq('id', campaignId)
+            .single();
+          
+          if (currentCampaign) {
+            await supabase
+              .from('campaigns')
+              .update({ failed_count: (currentCampaign.failed_count || 0) + 1 })
+              .eq('id', campaignId);
+          }
+        }
       }
 
       // Wait with random delay before next email
@@ -602,11 +651,13 @@ async function processCampaign(campaignId, userId) {
       .limit(1);
 
     if (remaining && remaining.length > 0) {
-      // Continue processing
-      processCampaign(campaignId, userId);
+      // Continue processing (don't await - run in background)
+      setImmediate(() => processCampaign(campaignId, userId));
     } else {
       // Mark complete and clear sensitive data
-      await supabase
+      console.log(`✅ All emails processed for campaign ${campaignId}, marking as completed`);
+      
+      const { error: updateError } = await supabase
         .from('campaigns')
         .update({ 
           status: 'completed', 
@@ -616,11 +667,15 @@ async function processCampaign(campaignId, userId) {
         })
         .eq('id', campaignId);
       
+      if (updateError) {
+        console.error('Failed to update campaign status:', updateError);
+      } else {
+        console.log(`✅ Campaign ${campaignId} status updated to completed`);
+      }
+      
       if (isUpstashConfigured) {
         await campaignQueue.dequeue(campaignId, userId);
       }
-      
-      console.log(`✅ Campaign ${campaignId} completed successfully`);
     }
 
   } catch (err) {
