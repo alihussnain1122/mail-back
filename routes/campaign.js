@@ -638,7 +638,15 @@ async function processCampaign(campaignId, userId) {
       const minDelay = delayMin || LIMITS.DEFAULT_MIN_DELAY_MS;
       const maxDelay = delayMax || LIMITS.DEFAULT_MAX_DELAY_MS;
       const randomDelay = Math.floor(Math.random() * (maxDelay - minDelay + 1)) + minDelay;
-      console.log(`Waiting ${randomDelay}ms before next email...`);
+      const nextEmailAt = new Date(Date.now() + randomDelay).toISOString();
+      
+      // Update campaign with next_email_at so frontend can show real countdown
+      await supabase
+        .from('campaigns')
+        .update({ next_email_at: nextEmailAt })
+        .eq('id', campaignId);
+      
+      console.log(`Waiting ${randomDelay}ms before next email (${nextEmailAt})...`);
       await new Promise(resolve => setTimeout(resolve, randomDelay));
     }
 
