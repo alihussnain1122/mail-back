@@ -24,15 +24,15 @@ export const injectTracking = (htmlBody, trackingId, enableTracking = true) => {
   const BACKEND_URL = CONFIG.backendUrl;
   let trackedHtml = htmlBody;
   
-  // Wrap all links for click tracking
+  // Wrap all links for click tracking (more flexible regex to handle all href positions)
   trackedHtml = trackedHtml.replace(
-    /<a\s+([^>]*href=["'])([^"']+)(["'][^>]*)>/gi,
-    (match, prefix, url, suffix) => {
+    /<a\s+([^>]*?)href=(["'])([^"']+)\2([^>]*)>/gi,
+    (match, before, quote, url, after) => {
       if (url.includes('/api/track/') || url.includes('/api/unsubscribe/')) {
         return match;
       }
       const trackedUrl = `${BACKEND_URL}/api/track/click/${trackingId}?url=${encodeURIComponent(url)}`;
-      return `<a ${prefix}${trackedUrl}${suffix}>`;
+      return `<a ${before}href=${quote}${trackedUrl}${quote}${after}>`;
     }
   );
   
