@@ -28,6 +28,11 @@ export const ALLOWED_ORIGINS = [
   'http://localhost:3000',
   'http://localhost:5174',
   'https://cold-mailing-ebon.vercel.app',
-];
+  // Add any additional allowed origins from env
+  ...(process.env.ADDITIONAL_ORIGINS ? process.env.ADDITIONAL_ORIGINS.split(',') : []),
+].filter(Boolean);
+
+// Log allowed origins on startup
+console.log('Allowed CORS origins:', ALLOWED_ORIGINS);
 
 export const isVercel = !!process.env.VERCEL;
