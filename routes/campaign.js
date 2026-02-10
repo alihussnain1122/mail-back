@@ -191,10 +191,15 @@ router.post('/start',
         .eq('id', campaignId);
     }
 
-    // Start processing in background (non-blocking)
-    processCampaign(campaignId, userId).catch(err => {
-      console.error(`Campaign ${campaignId} processing error:`, err);
-    });
+    // On Vercel, don't call processCampaign - let worker handle it
+    // On local/non-serverless, start background processing
+    if (!isVercel) {
+      processCampaign(campaignId, userId).catch(err => {
+        console.error(`Campaign ${campaignId} processing error:`, err);
+      });
+    } else {
+      console.log('🔄 Serverless mode: campaign will be processed by worker');
+    }
 
     res.json({
       success: true,
@@ -327,10 +332,14 @@ router.post('/resume',
         .update({ status: 'running', paused_at: null })
         .eq('id', campaignId);
 
-      // Resume processing
-      processCampaign(campaignId, userId).catch(err => {
-        console.error(`Campaign ${campaignId} resume error:`, err);
-      });
+      // On Vercel, don't call processCampaign - let worker handle it
+      if (!isVercel) {
+        processCampaign(campaignId, userId).catch(err => {
+          console.error(`Campaign ${campaignId} resume error:`, err);
+        });
+      } else {
+        console.log('🔄 Serverless mode: campaign will be processed by worker');
+      }
 
       res.json({ success: true, message: 'Campaign resumed' });
     } catch (err) {

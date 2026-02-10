@@ -26,16 +26,26 @@ const BATCH_CONFIG = {
 
 /**
  * Process pending emails for all running campaigns
- * Called by Vercel cron every minute
+ * Called by Vercel cron OR frontend polling
  * 
  * GET /api/campaign-worker/process
  */
 router.get('/process', async (req, res) => {
-  // Verify cron secret in production
-  if (isVercel && BATCH_CONFIG.CRON_SECRET) {
-    const authHeader = req.headers.authorization;
-    if (authHeader !== `Bearer ${BATCH_CONFIG.CRON_SECRET}`) {
-      console.warn('Unauthorized cron attempt');
+  // Allow requests in these cases:
+  // 1. Has valid CRON_SECRET header (external cron service)
+  // 2. No CRON_SECRET configured (anyone can trigger)
+  // 3. Request comes with referer from allowed origins (frontend polling)
+  const authHeader = req.headers.authorization;
+  const referer = req.headers.referer || req.headers.origin || '';
+  
+  if (BATCH_CONFIG.CRON_SECRET) {
+    const hasValidSecret = authHeader === `Bearer ${BATCH_CONFIG.CRON_SECRET}`;
+    const isFromFrontend = referer.includes('vercel.app') || 
+                           referer.includes('localhost') ||
+                           referer.includes('127.0.0.1');
+    
+    if (!hasValidSecret && !isFromFrontend) {
+      console.warn('Unauthorized worker attempt from:', referer || 'no referer');
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
   }
