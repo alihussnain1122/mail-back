@@ -19,10 +19,6 @@
     {
       "path": "/api/cleanup/cleanup-old-data",
       "schedule": "0 0 * * *"
-    },
-    {
-      "path": "/api/campaign-worker/process",
-      "schedule": "* * * * *"
     }
   ]
 }
