@@ -14,6 +14,7 @@ import unsubscribeRouter from './routes/unsubscribe.js';
 import cleanupRouter from './routes/cleanup.js';
 import aiRouter from './routes/ai.js';
 import campaignRouter from './routes/campaign.js';
+import campaignWorkerRouter from './routes/campaign-worker.js';
 
 const app = express();
 
@@ -60,6 +61,7 @@ app.use('/api/send', requireAuth, emailRouter);
 app.use('/api/cleanup', requireAuth, cleanupRouter);
 app.use('/api/ai', requireAuth, aiRouter);
 app.use('/api/campaign', campaignRouter); // Has its own auth middleware
+app.use('/api/campaign-worker', campaignWorkerRouter); // Cron-based email processing
 // Note: tracking and unsubscribe routes are mounted before CORS middleware
 
 // ===================
