@@ -284,33 +284,48 @@ router.post('/resume',
         return res.status(400).json({ success: false, error: 'Campaign is not paused' });
       }
 
-      await supabase
-        .from('campaigns')
-        .update({ status: 'running', paused_at: null })
-        .eq('id', campaignId);
-
-      // Re-queue for processing
+      // Store credentials and update status
       if (isUpstashConfigured) {
-        const { data: pendingEmails } = await supabase
-          .from('campaign_emails')
-          .select('*')
-          .eq('campaign_id', campaignId)
-          .eq('status', 'pending')
-          .order('sort_order');
-
         await campaignQueue.enqueue(campaignId, userId, {
           campaignId,
           userId,
           credentials,
           template: { subject: campaign.template_subject, body: campaign.template_body },
           senderName: campaign.sender_name,
-          delayMs: campaign.delay_ms,
+          delayMin: campaign.delay_min,
+          delayMax: campaign.delay_max,
           enableTracking: true,
           status: 'running',
           currentIndex: campaign.sent_count + campaign.failed_count,
           total: campaign.total_emails,
         });
+      } else {
+        // CRITICAL FIX: Store credentials in database for non-Upstash mode
+        await supabase
+          .from('campaigns')
+          .update({
+            credentials_temp: JSON.stringify({
+              smtpHost: credentials.smtpHost,
+              smtpPort: credentials.smtpPort,
+              emailUser: credentials.emailUser,
+              emailPass: credentials.emailPass,
+              senderName: credentials.senderName,
+            }),
+            template_data: JSON.stringify({
+              template: { subject: campaign.template_subject, body: campaign.template_body },
+              senderName: campaign.sender_name,
+              delayMin: campaign.delay_min,
+              delayMax: campaign.delay_max,
+              enableTracking: true,
+            }),
+          })
+          .eq('id', campaignId);
       }
+
+      await supabase
+        .from('campaigns')
+        .update({ status: 'running', paused_at: null })
+        .eq('id', campaignId);
 
       // Resume processing
       processCampaign(campaignId, userId).catch(err => {
