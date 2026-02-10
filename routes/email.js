@@ -8,7 +8,6 @@ import {
   generateTrackingId 
 } from '../services/helpers.js';
 import { createTransporterFromCredentials, injectTracking } from '../services/email.js';
-import { loadTemplates } from '../services/data.js';
 
 const router = express.Router();
 
@@ -70,19 +69,16 @@ router.post('/single',
   }
 );
 
-// Send test email
+// Send test email (template passed directly)
 router.post('/test',
   emailLimiter,
   body('email').isEmail().withMessage('Valid email is required'),
+  body('template.subject').notEmpty().withMessage('Template subject is required'),
+  body('template.body').notEmpty().withMessage('Template body is required'),
   body('credentials').notEmpty().withMessage('SMTP credentials are required'),
   handleValidationErrors,
   async (req, res) => {
-    const { email, templateIndex = 0, senderName, credentials } = req.body;
-    
-    const idx = parseInt(templateIndex, 10);
-    if (isNaN(idx) || idx < 0) {
-      return res.status(400).json({ error: 'Invalid template index' });
-    }
+    const { email, template, senderName, credentials } = req.body;
     
     const credError = validateCredentials(credentials);
     if (credError) {
@@ -91,13 +87,6 @@ router.post('/test',
     
     let transporter;
     try {
-      const templates = loadTemplates();
-      const template = templates[idx];
-      
-      if (!template) {
-        return res.status(400).json({ error: 'Template not found' });
-      }
-      
       transporter = createTransporterFromCredentials(credentials);
       
       const sanitizedSubject = sanitizeEmailHeader(template.subject);

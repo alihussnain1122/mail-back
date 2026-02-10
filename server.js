@@ -3,15 +3,11 @@ import cors from 'cors';
 import multer from 'multer';
 
 import { CONFIG, ALLOWED_ORIGINS, isVercel } from './config/index.js';
-import { generalLimiter } from './middleware/validation.js';
 import { requireAuth, optionalAuth } from './middleware/auth.js';
-import { redisGeneralLimiter, redisEmailLimiter } from './services/redis.js';
+import { redisGeneralLimiter } from './services/redis.js';
 
 // Import routes
 import healthRouter from './routes/health.js';
-import templatesRouter from './routes/templates.js';
-import contactsRouter from './routes/contacts.js';
-import uploadsRouter from './routes/uploads.js';
 import emailRouter from './routes/email.js';
 import trackingRouter from './routes/tracking.js';
 import unsubscribeRouter from './routes/unsubscribe.js';
@@ -60,9 +56,6 @@ app.use(express.json({ limit: '10mb' }));
 app.use('/api', healthRouter);
 
 // Protected routes (require authentication)
-app.use('/api/templates', requireAuth, templatesRouter);
-app.use('/api/contacts', requireAuth, contactsRouter);
-app.use('/api/upload', requireAuth, uploadsRouter);
 app.use('/api/send', requireAuth, emailRouter);
 app.use('/api/cleanup', requireAuth, cleanupRouter);
 app.use('/api/ai', requireAuth, aiRouter);

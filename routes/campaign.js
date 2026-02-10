@@ -508,19 +508,29 @@ async function processCampaign(campaignId, userId) {
       return;
     }
 
-    // Process each email
-    for (const emailRecord of pendingEmails) {
-      // Check if campaign is still running
-      const { data: currentCampaign } = await supabase
-        .from('campaigns')
-        .select('status')
-        .eq('id', campaignId)
-        .single();
+    // Process each email - check status every 10 emails to avoid N+1 queries
+    const STATUS_CHECK_INTERVAL = 10;
+    let shouldStop = false;
+    
+    for (let i = 0; i < pendingEmails.length; i++) {
+      const emailRecord = pendingEmails[i];
+      
+      // Check if campaign is still running (every N emails)
+      if (i % STATUS_CHECK_INTERVAL === 0) {
+        const { data: currentCampaign } = await supabase
+          .from('campaigns')
+          .select('status')
+          .eq('id', campaignId)
+          .single();
 
-      if (currentCampaign?.status !== 'running') {
-        console.log(`Campaign ${campaignId} is ${currentCampaign?.status}, stopping processing`);
-        break;
+        if (currentCampaign?.status !== 'running') {
+          console.log(`Campaign ${campaignId} is ${currentCampaign?.status}, stopping processing`);
+          shouldStop = true;
+          break;
+        }
       }
+      
+      if (shouldStop) break;
 
       try {
         // Personalize template
@@ -605,14 +615,20 @@ async function processCampaign(campaignId, userId) {
       } catch (sendError) {
         console.error(`❌ Failed to send to ${emailRecord.email}:`, sendError.message);
         
-        await supabase
+        // Mark email as failed - properly handle potential errors
+        const { error: updateError } = await supabase
           .from('campaign_emails')
           .update({ 
             status: 'failed', 
             error_message: sendError.message,
-            failed_at: new Date().toISOString(),
           })
           .eq('id', emailRecord.id);
+
+        if (updateError) {
+          console.error('❌ Failed to update email status to failed:', updateError);
+        } else {
+          console.log(`✅ Email ${emailRecord.email} marked as failed`);
+        }
 
         // Update failed count
         const { error: rpcError } = await supabase.rpc('increment_campaign_failed', { campaign_id: campaignId });
