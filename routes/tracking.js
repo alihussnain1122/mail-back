@@ -62,6 +62,23 @@ function isValidRedirectUrl(url) {
   }
 }
 
+async function getRecipientByTrackingId(trackingId) {
+  if (!supabase || !trackingId) return null;
+
+  const { data, error } = await supabase
+    .from('campaign_emails')
+    .select('email, contact_email, campaign_id, user_id')
+    .eq('tracking_id', trackingId)
+    .maybeSingle();
+
+  if (error) {
+    console.error('Recipient lookup error:', error);
+    return null;
+  }
+
+  return data;
+}
+
 // Track email open (via pixel)
 router.get('/open/:trackingId', async (req, res) => {
   const { trackingId } = req.params;
@@ -84,11 +101,14 @@ router.get('/open/:trackingId', async (req, res) => {
     }
     
     if (supabase && trackingInfo) {
+      const recipient = await getRecipientByTrackingId(trackingId);
+      const recipientEmail = recipient?.email || recipient?.contact_email || `hashed-${trackingInfo.emailHash}@tracking.local`;
+
       const { error } = await supabase.from('email_tracking').insert({
         tracking_id: trackingId,
-        campaign_id: trackingInfo.campaignId,
-        email_hash: trackingInfo.emailHash, // Store hash, not actual email
-        user_id: trackingInfo.userId,
+        campaign_id: recipient?.campaign_id || trackingInfo.campaignId,
+        email: recipientEmail,
+        user_id: recipient?.user_id || trackingInfo.userId,
         tracking_type: 'open',
         ip_address: ipAddress,
         user_agent: userAgent.slice(0, 500),
@@ -143,11 +163,14 @@ router.get('/click/:trackingId', async (req, res) => {
     }
     
     if (supabase && trackingInfo) {
+      const recipient = await getRecipientByTrackingId(trackingId);
+      const recipientEmail = recipient?.email || recipient?.contact_email || `hashed-${trackingInfo.emailHash}@tracking.local`;
+
       await supabase.from('email_tracking').insert({
         tracking_id: trackingId,
-        campaign_id: trackingInfo.campaignId,
-        email_hash: trackingInfo.emailHash, // Store hash, not actual email
-        user_id: trackingInfo.userId,
+        campaign_id: recipient?.campaign_id || trackingInfo.campaignId,
+        email: recipientEmail,
+        user_id: recipient?.user_id || trackingInfo.userId,
         tracking_type: 'click',
         link_url: url,
         ip_address: ipAddress,
@@ -155,12 +178,13 @@ router.get('/click/:trackingId', async (req, res) => {
         device_type: deviceType,
       });
       
-      // Track click count in campaign_emails
-      await supabase
-        .from('campaign_emails')
-        .update({ clicked_at: new Date().toISOString() })
-        .eq('tracking_id', trackingId)
-        .is('clicked_at', null);
+      // Track click count in campaign_emails via DB helper if available
+      const { error: clickCountError } = await supabase
+        .rpc('increment_click_count', { tracking_id_param: trackingId });
+
+      if (clickCountError) {
+        console.warn('Could not increment click count:', clickCountError.message);
+      }
     }
     
   } catch (err) {

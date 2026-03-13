@@ -91,7 +91,7 @@ ${availableVars.join('\n')}
 STRICT RULES:
 1. ${hasPersonalization ? 'Use the available personalization variables naturally in the email' : 'DO NOT use any personalization variables like {{firstName}} or {{company}} - write a generic but engaging email'}
 2. Subject line MUST be under 50 characters
-3. Email body MUST be under 150 words
+3. Email body MUST be under 200 words
 4. Include ONE clear call-to-action
 5. Be professional but engaging
 6. No spam trigger words
