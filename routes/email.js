@@ -4,10 +4,9 @@ import { handleValidationErrors, emailLimiter } from '../middleware/validation.j
 import { 
   validateCredentials, 
   sanitizeEmailHeader, 
-  sanitizeHtml, 
-  generateTrackingId 
+  sanitizeHtml 
 } from '../services/helpers.js';
-import { createTransporterFromCredentials, injectTracking } from '../services/email.js';
+import { createTransporterFromCredentials } from '../services/email.js';
 
 const router = express.Router();
 
@@ -20,7 +19,7 @@ router.post('/single',
   body('credentials').notEmpty().withMessage('SMTP credentials are required'),
   handleValidationErrors,
   async (req, res) => {
-    const { email, template, senderName, credentials, campaignId, userId, enableTracking } = req.body;
+    const { email, template, senderName, credentials } = req.body;
     
     const credError = validateCredentials(credentials);
     if (credError) {
@@ -28,7 +27,6 @@ router.post('/single',
     }
     
     let transporter;
-    let trackingId = null;
     
     try {
       transporter = createTransporterFromCredentials(credentials);
@@ -36,12 +34,7 @@ router.post('/single',
       
       const sanitizedSubject = sanitizeEmailHeader(template.subject);
       const sanitizedSenderName = sanitizeEmailHeader(senderName || credentials.senderName || 'Support Team');
-      let htmlBody = sanitizeHtml(template.body).replace(/\n/g, '<br>');
-      
-      if (enableTracking && campaignId && userId) {
-        trackingId = generateTrackingId(campaignId, email, userId);
-        htmlBody = injectTracking(htmlBody, trackingId, true);
-      }
+      const htmlBody = sanitizeHtml(template.body).replace(/\n/g, '<br>');
       
       const info = await transporter.sendMail({
         from: `"${sanitizedSenderName}" <${credentials.emailUser}>`,
@@ -55,7 +48,6 @@ router.post('/single',
         success: true, 
         message: `Email sent to ${email}`, 
         messageId: info.messageId,
-        trackingId,
       });
     } catch (err) {
       console.error('Email send error:', err.message);

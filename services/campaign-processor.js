@@ -2,7 +2,7 @@
 // Contains core campaign logic split from campaign.js route file.
 
 import { supabase } from '../services/supabase.js';
-import { createTransporterFromCredentials, injectTracking } from '../services/email.js';
+import { createTransporterFromCredentials } from '../services/email.js';
 import { sanitizeEmailHeader, sanitizeHtml } from '../services/helpers.js';
 import { campaignQueue, isUpstashConfigured } from '../services/redis.js';
 import { CONFIG } from '../config/index.js';
@@ -42,7 +42,7 @@ export async function processCampaign(campaignId, userId) {
         .eq('id', campaignId);
       return;
     }
-    const { credentials, template, senderName, delayMin, delayMax, enableTracking } = queueData;
+    const { credentials, template, senderName, delayMin, delayMax } = queueData;
     transporter = createTransporterFromCredentials(credentials);
     const { data: pendingEmails, error: emailsError } = await supabase
       .from('campaign_emails')
@@ -95,10 +95,7 @@ export async function processCampaign(campaignId, userId) {
         });
         const sanitizedSubject = sanitizeEmailHeader(personalizedSubject);
         const sanitizedSenderName = sanitizeEmailHeader(senderName || credentials.senderName || 'Support Team');
-        let htmlBody = sanitizeHtml(personalizedBody).replace(/\n/g, '<br>');
-        if (enableTracking && emailRecord.tracking_id) {
-          htmlBody = injectTracking(htmlBody, emailRecord.tracking_id, true);
-        }
+        const htmlBody = sanitizeHtml(personalizedBody).replace(/\n/g, '<br>');
         await transporter.sendMail({
           from: `"${sanitizedSenderName}" <${credentials.emailUser}>`,
           to: emailRecord.email,

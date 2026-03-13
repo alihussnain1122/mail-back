@@ -2,7 +2,7 @@
 // Contains core logic for campaign batch processing, separated from the route handler.
 
 import { supabase } from '../services/supabase.js';
-import { createTransporterFromCredentials, injectTracking } from '../services/email.js';
+import { createTransporterFromCredentials } from '../services/email.js';
 import { sanitizeEmailHeader, sanitizeHtml } from '../services/helpers.js';
 import { campaignQueue, isUpstashConfigured } from '../services/redis.js';
 
@@ -50,7 +50,6 @@ export async function processCampaignBatch(campaign) {
       if (queueData?.template) template = queueData.template;
     }
     const senderName = campaign.sender_name || credentials.senderName;
-    const enableTracking = templateData.enableTracking !== false;
     for (const emailRecord of pendingEmails) {
       try {
         const { data: currentCampaign } = await supabase
@@ -77,10 +76,7 @@ export async function processCampaignBatch(campaign) {
         });
         const sanitizedSubject = sanitizeEmailHeader(personalizedSubject);
         const sanitizedSenderName = sanitizeEmailHeader(senderName || 'Support Team');
-        let htmlBody = sanitizeHtml(personalizedBody).replace(/\n/g, '<br>');
-        if (enableTracking && emailRecord.tracking_id) {
-          htmlBody = injectTracking(htmlBody, emailRecord.tracking_id, true);
-        }
+        const htmlBody = sanitizeHtml(personalizedBody).replace(/\n/g, '<br>');
         await transporter.sendMail({
           from: `"${sanitizedSenderName}" <${credentials.emailUser}>`,
           to: emailRecord.email,

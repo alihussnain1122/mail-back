@@ -9,7 +9,6 @@ import { redisGeneralLimiter } from './services/redis.js';
 // Import routes
 import healthRouter from './routes/health.js';
 import emailRouter from './routes/email.js';
-import trackingRouter from './routes/tracking.js';
 import unsubscribeRouter from './routes/unsubscribe.js';
 import aiRouter from './routes/ai.js';
 import campaignRouter from './routes/campaign.js';
@@ -24,8 +23,7 @@ app.set('trust proxy', 1);
 // MIDDLEWARE
 // ===================
 
-// Tracking routes - NO CORS restriction (called by email clients)
-app.use('/api/track', trackingRouter);
+// Public routes used directly from email clients
 app.use('/api/unsubscribe', unsubscribeRouter);
 
 // CORS for other routes
@@ -60,7 +58,7 @@ app.use('/api/send', requireAuth, emailRouter);
 app.use('/api/ai', requireAuth, aiRouter);
 app.use('/api/campaign', campaignRouter); // Has its own auth middleware
 app.use('/api/campaign-worker', campaignWorkerRouter); // Cron-based email processing
-// Note: tracking and unsubscribe routes are mounted before CORS middleware
+// Note: unsubscribe route is mounted before CORS middleware
 
 // ===================
 // ERROR HANDLING

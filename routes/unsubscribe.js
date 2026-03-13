@@ -19,14 +19,6 @@ router.get('/:trackingId', async (req, res) => {
         campaign_id: trackingInfo.campaignId,
         reason: 'User clicked unsubscribe link',
       }, { onConflict: 'user_id,email' });
-      
-      await supabase.from('email_tracking').insert({
-        tracking_id: trackingId,
-        campaign_id: trackingInfo.campaignId,
-        email: trackingInfo.email,
-        user_id: trackingInfo.userId,
-        tracking_type: 'unsubscribe',
-      });
     } catch (err) {
       console.error('Unsubscribe save error:', err);
     }

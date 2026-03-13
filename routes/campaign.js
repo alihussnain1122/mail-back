@@ -9,7 +9,8 @@ import { handleValidationErrors } from '../middleware/validation.js';
 import { requireAuth, requireOwnership } from '../middleware/auth.js';
 import { redisCampaignLimiter, campaignQueue, redis, isUpstashConfigured } from '../services/redis.js';
 import { supabase } from '../services/supabase.js';
-import { validateCredentials, generateTrackingId, hashEmail } from '../services/helpers.js';
+import { validateCredentials } from '../services/helpers.js';
+import { createTransporterFromCredentials } from '../services/email.js';
 import { isVercel } from '../config/index.js';
 import { processCampaign, LIMITS } from '../services/campaign-processor.js';
 
@@ -40,7 +41,6 @@ router.post('/start',
       delayMin = LIMITS.DEFAULT_MIN_DELAY_MS,
       delayMax = LIMITS.DEFAULT_MAX_DELAY_MS,
       campaignName,
-      enableTracking = true,
     } = req.body;
     
     const userId = req.user.id;
@@ -113,8 +113,6 @@ router.post('/start',
         contact_data: contact,
         status: 'pending',
         sort_order: index,
-        tracking_id: enableTracking ? generateTrackingId(campaignId, contact.email, userId) : null,
-        email_hash: hashEmail(contact.email),
       }));
 
       const { error: insertError } = await supabase
@@ -154,7 +152,6 @@ router.post('/start',
         senderName,
         delayMin,
         delayMax,
-        enableTracking,
         status: 'running',
         currentIndex: 0,
         total: contacts.length,
@@ -172,7 +169,7 @@ router.post('/start',
             emailPass: credentials.emailPass,
             senderName: credentials.senderName,
           }),
-          template_data: JSON.stringify({ template, senderName, delayMin, delayMax, enableTracking }),
+          template_data: JSON.stringify({ template, senderName, delayMin, delayMax }),
         })
         .eq('id', campaignId);
     }
@@ -285,7 +282,6 @@ router.post('/resume',
           senderName: campaign.sender_name,
           delayMin: campaign.delay_min,
           delayMax: campaign.delay_max,
-          enableTracking: true,
           status: 'running',
           currentIndex: campaign.sent_count + campaign.failed_count,
           total: campaign.total_emails,
@@ -307,7 +303,6 @@ router.post('/resume',
               senderName: campaign.sender_name,
               delayMin: campaign.delay_min,
               delayMax: campaign.delay_max,
-              enableTracking: true,
             }),
           })
           .eq('id', campaignId);
