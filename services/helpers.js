@@ -48,10 +48,6 @@ export const validateCredentials = (credentials) => {
   if (!credentials) return 'SMTP credentials required. Please configure in Settings.';
   if (!credentials.smtpHost) return 'SMTP host is required';
   if (!credentials.emailUser) return 'Email address is required';
-  if (credentials.authType === 'google') {
-    if (!credentials.googleAccessToken) return 'Google account token is required. Reconnect Google in Settings.';
-    return null;
-  }
   if (!credentials.emailPass) return 'Email password is required';
   return null;
 };
