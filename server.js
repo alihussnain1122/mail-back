@@ -3,7 +3,7 @@ import cors from 'cors';
 import multer from 'multer';
 
 import { CONFIG, ALLOWED_ORIGINS, isVercel } from './config/index.js';
-import { requireAuth, optionalAuth } from './middleware/auth.js';
+import { requireAuth } from './middleware/auth.js';
 import { redisGeneralLimiter } from './services/redis.js';
 
 // Import routes

@@ -53,13 +53,12 @@ router.post('/generate-template',
       audience, 
       keyPoints,
       availableFields,
-      userId 
     } = req.body;
 
-    // Check rate limit
-    if (userId && !checkRateLimit(userId)) {
-      return res.status(429).json({ 
-        error: 'Rate limit exceeded. Please wait a minute before generating more templates.' 
+    // Check rate limit using authenticated user ID
+    if (!checkRateLimit(req.user.id)) {
+      return res.status(429).json({
+        error: 'Rate limit exceeded. Please wait a minute before generating more templates.'
       });
     }
 
@@ -179,12 +178,12 @@ router.post('/improve-template',
   body('instruction').notEmpty().withMessage('Instruction is required'),
   handleValidationErrors,
   async (req, res) => {
-    const { subject, body: emailBody, instruction, userId } = req.body;
+    const { subject, body: emailBody, instruction } = req.body;
 
-    // Check rate limit
-    if (userId && !checkRateLimit(userId)) {
-      return res.status(429).json({ 
-        error: 'Rate limit exceeded. Please wait a minute.' 
+    // Check rate limit using authenticated user ID
+    if (!checkRateLimit(req.user.id)) {
+      return res.status(429).json({
+        error: 'Rate limit exceeded. Please wait a minute.'
       });
     }
 

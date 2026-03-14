@@ -5,7 +5,7 @@ export const createTransporterFromCredentials = (credentials) => {
   return nodemailer.createTransport({
     host: credentials.smtpHost,
     port: Number(credentials.smtpPort) || 587,
-    secure: false,
+    secure: Number(credentials.smtpPort) === 465,
     auth: {
       user: credentials.emailUser,
       pass: credentials.emailPass

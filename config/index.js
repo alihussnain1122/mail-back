@@ -22,6 +22,10 @@ if (!SUPABASE_URL) {
   console.warn('Warning: SUPABASE_URL not set');
 }
 
+if (HMAC_SECRET === 'change-this-in-production') {
+  console.warn('Warning: HMAC_SECRET is using default value. Set HMAC_SECRET env variable for production.');
+}
+
 export const ALLOWED_ORIGINS = [
   CONFIG.frontendUrl,
   'http://localhost:5173',

@@ -49,45 +49,8 @@ export async function requireAuth(req, res, next) {
     return res.status(401).json({ 
       error: 'Authentication failed.',
       code: 'AUTH_FAILED',
-      details: error.message
     });
   }
-}
-
-/**
- * Optional auth - attaches user if valid token present, but doesn't require it
- */
-export function optionalAuth(req, res, next) {
-  const authHeader = req.headers.authorization;
-  
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    req.user = null;
-    return next();
-  }
-
-  const token = authHeader.split(' ')[1];
-
-  if (!JWT_SECRET) {
-    req.user = null;
-    return next();
-  }
-
-  try {
-    const decoded = jwt.verify(token, JWT_SECRET, {
-      algorithms: ['HS256'],
-      issuer: 'supabase',
-    });
-
-    req.user = {
-      id: decoded.sub,
-      email: decoded.email,
-      role: decoded.role,
-    };
-  } catch {
-    req.user = null;
-  }
-
-  next();
 }
 
 /**

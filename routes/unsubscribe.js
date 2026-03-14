@@ -15,7 +15,7 @@ router.get('/:trackingId', async (req, res) => {
     try {
       await supabase.from('unsubscribed_emails').upsert({
         user_id: trackingInfo.userId,
-        email: trackingInfo.email,
+        email: trackingInfo.emailHash,
         campaign_id: trackingInfo.campaignId,
         reason: 'User clicked unsubscribe link',
       }, { onConflict: 'user_id,email' });

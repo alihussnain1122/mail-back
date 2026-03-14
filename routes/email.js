@@ -51,9 +51,9 @@ router.post('/single',
       });
     } catch (err) {
       console.error('Email send error:', err.message);
-      res.status(500).json({ 
-        success: false, 
-        error: err.message
+      res.status(500).json({
+        success: false,
+        error: 'Failed to send email. Please check your SMTP settings.',
       });
     } finally {
       if (transporter) transporter.close();
@@ -96,7 +96,7 @@ router.post('/test',
       res.json({ success: true, message: `Test email sent to ${email}` });
     } catch (err) {
       console.error('Test email error:', err.message);
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ error: 'Failed to send test email. Please check your SMTP settings.' });
     } finally {
       if (transporter) transporter.close();
     }

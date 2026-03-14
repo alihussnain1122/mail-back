@@ -11,6 +11,7 @@ import { redisCampaignLimiter, campaignQueue, redis, isUpstashConfigured } from 
 import { supabase } from '../services/supabase.js';
 import { validateCredentials } from '../services/helpers.js';
 import { createTransporterFromCredentials } from '../services/email.js';
+import crypto from 'crypto';
 import { isVercel } from '../config/index.js';
 import { processCampaign, LIMITS } from '../services/campaign-processor.js';
 
@@ -131,7 +132,6 @@ router.post('/start',
       return res.status(500).json({ 
         success: false, 
         error: 'Failed to create campaign',
-        details: err.message
       });
     }
 
@@ -147,8 +147,6 @@ router.post('/start',
           // Note: Password should be encrypted in production
           emailPass: credentials.emailPass,
           senderName: credentials.senderName,
-          authType: credentials.authType,
-          googleAccessToken: credentials.googleAccessToken,
         },
         template,
         senderName,
@@ -170,8 +168,6 @@ router.post('/start',
             emailUser: credentials.emailUser,
             emailPass: credentials.emailPass,
             senderName: credentials.senderName,
-            authType: credentials.authType,
-            googleAccessToken: credentials.googleAccessToken,
           }),
           template_data: JSON.stringify({ template, senderName, delayMin, delayMax }),
         })
@@ -301,8 +297,6 @@ router.post('/resume',
               emailUser: credentials.emailUser,
               emailPass: credentials.emailPass,
               senderName: credentials.senderName,
-              authType: credentials.authType,
-              googleAccessToken: credentials.googleAccessToken,
             }),
             template_data: JSON.stringify({
               template: { subject: campaign.template_subject, body: campaign.template_body },
@@ -417,7 +411,7 @@ router.get('/status/:campaignId',
           total: campaign.total_emails,
           sent: campaign.sent_count,
           failed: campaign.failed_count,
-          progress: Math.round((campaign.sent_count + campaign.failed_count) / campaign.total_emails * 100),
+          progress: campaign.total_emails > 0 ? Math.round((campaign.sent_count + campaign.failed_count) / campaign.total_emails * 100) : 0,
           startedAt: campaign.started_at,
           completedAt: campaign.completed_at,
         },

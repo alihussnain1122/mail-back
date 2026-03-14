@@ -10,13 +10,8 @@ import { supabase } from '../services/supabase.js';
 import { isVercel } from '../config/index.js';
 import {
   processCampaignBatch,
-  completeCampaign,
-  markCampaignError,
-  incrementCampaignSent,
-  incrementCampaignFailed,
-  sleep
 } from '../services/campaignWorkerService.js';
-import { campaignQueue, isUpstashConfigured } from '../services/redis.js';
+import { isUpstashConfigured } from '../services/redis.js';
 
 const router = express.Router();
 
@@ -98,7 +93,7 @@ router.get('/process', async (req, res) => {
 
   } catch (err) {
     console.error('❌ Worker error:', err);
-    res.status(500).json({ success: false, error: err.message });
+    res.status(500).json({ success: false, error: 'Campaign worker processing failed' });
   }
 });
 
